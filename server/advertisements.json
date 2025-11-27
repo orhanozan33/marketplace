@@ -1,0 +1,32 @@
+{
+  "ad1": {
+    "fileUrl": "http://localhost:3000/uploads/advertisements/1764130698089_1.jpeg",
+    "url": "",
+    "active": true
+  },
+  "ad2": {
+    "fileUrl": "",
+    "url": "",
+    "active": false
+  },
+  "ad3": {
+    "fileUrl": "http://localhost:3000/uploads/advertisements/1764130727779_2.png",
+    "url": "",
+    "active": true
+  },
+  "ad4": {
+    "fileUrl": "",
+    "url": "",
+    "active": false
+  },
+  "ad5": {
+    "fileUrl": "",
+    "url": "",
+    "active": false
+  },
+  "ad6": {
+    "fileUrl": "",
+    "url": "",
+    "active": false
+  }
+}

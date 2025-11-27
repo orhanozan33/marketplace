@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kullanıcı Panel - P2P Çip Pazaryeri</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+        }
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .navbar h1 {
+            font-size: 24px;
+        }
+        .navbar-menu {
+            display: flex;
+            gap: 20px;
+        }
+        .navbar-menu a {
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+        .navbar-menu a:hover, .navbar-menu a.active {
+            background: rgba(255,255,255,0.2);
+        }
+        .container {
+            max-width: 1200px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+        .login-form {
+            max-width: 400px;
+            margin: 100px auto;
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        .login-form h2 {
+            margin-bottom: 20px;
+            color: #667eea;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #5568d3;
+        }
+        .btn-secondary {
+            background: #6c757d;
+        }
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 30px;
+            border: 1px solid #888;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 600px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #000;
+        }
+        .tab-btn {
+            padding: 10px 20px;
+            background: #f0f0f0;
+            border: none;
+            cursor: pointer;
+            margin-right: 5px;
+            border-radius: 5px 5px 0 0;
+        }
+        .tab-btn.active {
+            background: #667eea;
+            color: white;
+        }
+        .payment-tab {
+            margin-top: 20px;
+        }
+        .card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .stat-card .number {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .stat-card .label {
+            font-size: 1em;
+            opacity: 0.9;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table th, table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        table th {
+            background: #f8f9fa;
+            color: #667eea;
+            font-weight: bold;
+        }
+        table tr:hover {
+            background: #f8f9fa;
+        }
+        .badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .badge.active {
+            background: #10b981;
+            color: white;
+        }
+        .badge.completed {
+            background: #10b981;
+            color: white;
+        }
+        .badge.pending {
+            background: #f59e0b;
+            color: white;
+        }
+        .badge.disputed {
+            background: #ef4444;
+            color: white;
+        }
+        .action-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 2px;
+            font-size: 14px;
+        }
+        .action-btn:hover {
+            background: #5568d3;
+        }
+        .action-btn.success {
+            background: #10b981;
+        }
+        .action-btn.danger {
+            background: #ef4444;
+        }
+        .hidden {
+            display: none;
+        }
+        .section {
+            display: none;
+        }
+        .section.active {
+            display: block;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login/Register -->
+    <div id="authSection">
+        <div class="login-form">
+            <h2>🔐 Giriş Yap</h2>
+            <div class="form-group">
+                <label>Kullanıcı Adı</label>
+                <input type="text" id="username" placeholder="kullanıcı adı">
+            </div>
+            <div class="form-group">
+                <label>Şifre</label>
+                <input type="password" id="password" placeholder="şifre">
+            </div>
+            <button class="btn" onclick="login()">Giriş Yap</button>
+            <button class="btn btn-secondary" onclick="showRegister()" style="margin-top: 10px;">Kayıt Ol</button>
+            <p id="authError" style="color: red; margin-top: 10px; display: none;"></p>
+        </div>
+
+        <div id="registerForm" class="login-form hidden">
+            <h2>📝 Kayıt Ol</h2>
+            <div class="form-group">
+                <label>Kullanıcı Adı</label>
+                <input type="text" id="regUsername" placeholder="kullanıcı adı">
+            </div>
+            <div class="form-group">
+                <label>E-posta (Opsiyonel)</label>
+                <input type="email" id="regEmail" placeholder="email@example.com">
+            </div>
+            <div class="form-group">
+                <label>Şifre</label>
+                <input type="password" id="regPassword" placeholder="şifre">
+            </div>
+            <button class="btn" onclick="register()">Kayıt Ol</button>
+            <button class="btn btn-secondary" onclick="showLogin()" style="margin-top: 10px;">Giriş Yap</button>
+            <p id="regError" style="color: red; margin-top: 10px; display: none;"></p>
+        </div>
+    </div>
+
+    <!-- User Panel -->
+    <div id="userPanel" class="hidden">
+        <div class="navbar">
+            <h1>👤 Kullanıcı Panel</h1>
+            <div class="navbar-menu">
+                <a href="#" onclick="showSection('dashboard', event)" class="active">📊 Dashboard</a>
+                <a href="#" onclick="showSection('allListings', event)">🛒 İlanlar</a>
+                <a href="#" onclick="showSection('market', event)">🏪 Market</a>
+                <a href="#" onclick="showSection('listings', event)">📋 İlanlarım</a>
+                <a href="#" onclick="showSection('createListing', event)">➕ İlan Ver</a>
+                <a href="#" onclick="showSection('orders', event)">📦 Siparişlerim</a>
+                <a href="#" onclick="showSection('wallet', event)">💰 Cüzdan</a>
+                <a href="#" onclick="logout()">🚪 Çıkış</a>
+            </div>
+        </div>
+
+        <div class="container">
+            <!-- Dashboard -->
+            <div id="dashboard" class="section active">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="number" id="availableBalance">-</div>
+                        <div class="label">Kullanılabilir Bakiye</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="number" id="lockedBalance">-</div>
+                        <div class="label">Kilitli Bakiye</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="number" id="myListings">-</div>
+                        <div class="label">Aktif İlanlarım</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="number" id="myOrders">-</div>
+                        <div class="label">Aktif Siparişlerim</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Son İşlemler</h3>
+                    <div id="recentActivity"></div>
+                </div>
+            </div>
+
+            <!-- Tüm İlanlar -->
+            <div id="allListings" class="section">
+                <div class="card">
+                    <h3>🛒 Tüm Aktif İlanlar</h3>
+                    <div id="allListingsList"></div>
+                </div>
+            </div>
+
+            <!-- Market -->
+            <div id="market" class="section">
+                <div class="card">
+                    <h3>🏪 Market - Çip Satın Al</h3>
+                    <div id="marketInfo"></div>
+                    <div class="form-group" style="margin-top: 20px;">
+                        <label>Çip Miktarı</label>
+                        <input type="number" id="marketChipAmount" placeholder="Örn: 1000" min="10" max="100000">
+                    </div>
+                    <div class="form-group">
+                        <label>Ödeme Yöntemi</label>
+                        <input type="text" id="marketPaymentMethod" placeholder="Örn: IBAN, Papara, USDT">
+                    </div>
+                    <div id="marketTotal" style="margin: 15px 0; padding: 12px; background: #e3f2fd; border-radius: 8px; display: none;">
+                        <strong>Toplam Tutar: <span id="marketTotalAmount"></span> TRY</strong>
+                    </div>
+                    <button class="btn" onclick="purchaseChips()">Çip Satın Al</button>
+                    <p id="marketError" style="color: red; margin-top: 10px; display: none;"></p>
+                </div>
+            </div>
+
+            <!-- İlanlarım -->
+            <div id="listings" class="section">
+                <div class="card">
+                    <h3>İlanlarım</h3>
+                    <div id="myListingsList"></div>
+                </div>
+            </div>
+
+            <!-- İlan Ver -->
+            <div id="createListing" class="section">
+                <div class="card">
+                    <h3>Yeni İlan Oluştur</h3>
+                    <div class="form-group">
+                        <label>Çip Miktarı</label>
+                        <input type="number" id="listingAmount" placeholder="1000">
+                    </div>
+                    <div class="form-group">
+                        <label>Fiyat</label>
+                        <input type="number" id="listingPrice" placeholder="900">
+                    </div>
+                    <div class="form-group">
+                        <label>Para Birimi</label>
+                        <select id="listingCurrency" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px;">
+                            <option value="TRY">TRY</option>
+                            <option value="USD">USD</option>
+                            <option value="EUR">EUR</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Ödeme Yöntemleri (virgülle ayırın)</label>
+                        <input type="text" id="listingPaymentMethods" placeholder="IBAN, Papara, USDT-TRC20">
+                    </div>
+                    <div class="form-group">
+                        <label>Açıklama (Opsiyonel)</label>
+                        <textarea id="listingDescription" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; min-height: 100px;"></textarea>
+                    </div>
+                    <button class="btn" onclick="createListing()">İlan Oluştur</button>
+                    <p id="listingError" style="color: red; margin-top: 10px; display: none;"></p>
+                </div>
+            </div>
+
+            <!-- Siparişlerim -->
+            <div id="orders" class="section">
+                <div class="card">
+                    <h3>Siparişlerim</h3>
+                    <div id="myOrdersList"></div>
+                </div>
+            </div>
+
+            <!-- Ödeme Modal -->
+            <div id="paymentModal" class="modal" style="display: none;">
+                <div class="modal-content" style="max-width: 600px;">
+                    <span class="close" onclick="closePaymentModal()">&times;</span>
+                    <h2>💳 Ödeme Yap</h2>
+                    <div id="paymentTabs" style="margin-bottom: 20px;">
+                        <button class="tab-btn active" onclick="showPaymentTab('card')">💳 Kart ile Ödeme</button>
+                        <button class="tab-btn" onclick="showPaymentTab('bank')">🏦 IBAN/Havale</button>
+                    </div>
+
+                    <!-- Kart ile Ödeme -->
+                    <div id="cardPaymentTab" class="payment-tab">
+                        <form id="cardPaymentForm">
+                            <input type="hidden" id="paymentOrderId">
+                            <div class="form-group">
+                                <label>Kart Numarası</label>
+                                <input type="text" id="cardNumber" placeholder="1234 5678 9012 3456" maxlength="19">
+                            </div>
+                            <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div>
+                                    <label>Son Kullanma Ay</label>
+                                    <input type="text" id="expireMonth" placeholder="12" maxlength="2">
+                                </div>
+                                <div>
+                                    <label>Son Kullanma Yıl</label>
+                                    <input type="text" id="expireYear" placeholder="2025" maxlength="4">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>CVV</label>
+                                <input type="text" id="cardCvc" placeholder="123" maxlength="3">
+                            </div>
+                            <div class="form-group">
+                                <label>Kart Sahibi Adı</label>
+                                <input type="text" id="cardHolderName" placeholder="Ad Soyad">
+                            </div>
+                            <button type="submit" class="btn" style="width: 100%;">Ödemeyi Tamamla</button>
+                        </form>
+                    </div>
+
+                    <!-- IBAN/Havale -->
+                    <div id="bankPaymentTab" class="payment-tab" style="display: none;">
+                        <form id="bankPaymentForm">
+                            <input type="hidden" id="bankPaymentOrderId">
+                            <div class="form-group">
+                                <label>IBAN</label>
+                                <input type="text" id="iban" placeholder="TR33 0006 1005 1978 6457 8413 26">
+                            </div>
+                            <div class="form-group">
+                                <label>Banka Adı</label>
+                                <input type="text" id="bankName" placeholder="Ziraat Bankası">
+                            </div>
+                            <div class="form-group">
+                                <label>Hesap Sahibi</label>
+                                <input type="text" id="accountHolder" placeholder="Ad Soyad">
+                            </div>
+                            <div class="form-group">
+                                <label>Havale Dekontu (URL)</label>
+                                <input type="url" id="receiptUrl" placeholder="https://...">
+                            </div>
+                            <div class="form-group">
+                                <label>Notlar (Opsiyonel)</label>
+                                <textarea id="paymentNotes" rows="3" placeholder="Ödeme ile ilgili notlar..."></textarea>
+                            </div>
+                            <button type="submit" class="btn" style="width: 100%;">Havale Bilgilerini Gönder</button>
+                        </form>
+                    </div>
+                    <p id="paymentError" style="color: red; margin-top: 10px; display: none;"></p>
+                </div>
+            </div>
+
+            <!-- Cüzdan -->
+            <div id="wallet" class="section">
+                <div class="card">
+                    <h3>Cüzdan Bilgileri</h3>
+                    <div id="walletInfo"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000';
+        let userToken = null;
+        let currentUser = null;
+
+        // Sayfa yüklendiğinde token kontrolü
+        window.addEventListener('load', () => {
+            const savedToken = localStorage.getItem('userToken');
+            const savedUser = localStorage.getItem('currentUser');
+            
+            if (savedToken && savedUser) {
+                userToken = savedToken;
+                currentUser = JSON.parse(savedUser);
+                document.getElementById('authSection').classList.add('hidden');
+                document.getElementById('userPanel').classList.remove('hidden');
+                loadDashboard();
+            }
+        });
+
+        function showRegister() {
+            document.querySelector('.login-form').classList.add('hidden');
+            document.getElementById('registerForm').classList.remove('hidden');
+        }
+
+        function showLogin() {
+            document.getElementById('registerForm').classList.add('hidden');
+            document.querySelector('.login-form').classList.remove('hidden');
+        }
+
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const response = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    userToken = data.access_token;
+                    currentUser = data.user;
+                    // Token'ı localStorage'a kaydet
+                    localStorage.setItem('userToken', userToken);
+                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                    document.getElementById('authSection').classList.add('hidden');
+                    document.getElementById('userPanel').classList.remove('hidden');
+                    loadDashboard();
+                } else {
+                    document.getElementById('authError').textContent = data.message || 'Giriş başarısız!';
+                    document.getElementById('authError').style.display = 'block';
+                }
+            } catch (error) {
+                document.getElementById('authError').textContent = 'Bağlantı hatası!';
+                document.getElementById('authError').style.display = 'block';
+            }
+        }
+
+        async function register() {
+            const username = document.getElementById('regUsername').value;
+            const email = document.getElementById('regEmail').value;
+            const password = document.getElementById('regPassword').value;
+
+            try {
+                const response = await fetch(`${API_URL}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, email: email || undefined })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    userToken = data.access_token;
+                    currentUser = data.user;
+                    // Token'ı localStorage'a kaydet
+                    localStorage.setItem('userToken', userToken);
+                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                    document.getElementById('authSection').classList.add('hidden');
+                    document.getElementById('userPanel').classList.remove('hidden');
+                    loadDashboard();
+                } else {
+                    document.getElementById('regError').textContent = data.message || 'Kayıt başarısız!';
+                    document.getElementById('regError').style.display = 'block';
+                }
+            } catch (error) {
+                document.getElementById('regError').textContent = 'Bağlantı hatası!';
+                document.getElementById('regError').style.display = 'block';
+            }
+        }
+
+        function logout() {
+            userToken = null;
+            currentUser = null;
+            // Token'ı localStorage'dan sil
+            localStorage.removeItem('userToken');
+            localStorage.removeItem('currentUser');
+            document.getElementById('authSection').classList.remove('hidden');
+            document.getElementById('userPanel').classList.add('hidden');
+        }
+
+        function showSection(sectionName, event) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            const targetSection = document.getElementById(sectionName);
+            if (targetSection) {
+                targetSection.classList.add('active');
+            }
+            
+            document.querySelectorAll('.navbar-menu a').forEach(a => a.classList.remove('active'));
+            
+            // Event varsa onu kullan, yoksa ilgili linki bul
+            if (event && event.target) {
+                event.target.classList.add('active');
+            } else {
+                // Event yoksa, ilgili linki bul
+                document.querySelectorAll('.navbar-menu a').forEach(a => {
+                    const onclick = a.getAttribute('onclick');
+                    if (onclick && onclick.includes(`'${sectionName}'`)) {
+                        a.classList.add('active');
+                    }
+                });
+            }
+
+            if (sectionName === 'dashboard') loadDashboard();
+            else if (sectionName === 'allListings') loadAllListings();
+            else if (sectionName === 'market') loadMarket();
+            else if (sectionName === 'listings') loadMyListings();
+            else if (sectionName === 'orders') loadMyOrders();
+            else if (sectionName === 'wallet') loadWallet();
+        }
+
+        let chipPrice = 1.0;
+
+        async function loadMarket() {
+            const marketInfoEl = document.getElementById('marketInfo');
+            if (!marketInfoEl) {
+                console.error('marketInfo element bulunamadı');
+                return;
+            }
+
+            try {
+                marketInfoEl.innerHTML = '<p>Yükleniyor...</p>';
+                const response = await fetch(`${API_URL}/market/price`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                
+                if (!data || !data.chipPrice) {
+                    throw new Error('Geçersiz yanıt formatı');
+                }
+
+                chipPrice = data.chipPrice;
+                
+                marketInfoEl.innerHTML = `
+                    <div style="padding: 15px; background: #f5f5f5; border-radius: 8px; margin-bottom: 15px;">
+                        <p style="margin: 5px 0;"><strong>Çip Fiyatı:</strong> 1 Çip = ${data.chipPrice} ${data.currency || 'TRY'}</p>
+                        <p style="margin: 5px 0;"><strong>Minimum:</strong> ${data.minPurchase || 10} Çip</p>
+                        <p style="margin: 5px 0;"><strong>Maximum:</strong> ${data.maxPurchase || 100000} Çip</p>
+                    </div>
+                `;
+
+                // Toplam tutar hesaplama
+                const chipAmountInput = document.getElementById('marketChipAmount');
+                if (chipAmountInput) {
+                    // Önceki event listener'ı kaldır
+                    const newInput = chipAmountInput.cloneNode(true);
+                    chipAmountInput.parentNode.replaceChild(newInput, chipAmountInput);
+                    
+                    newInput.addEventListener('input', function() {
+                        const amount = parseFloat(this.value) || 0;
+                        const totalDiv = document.getElementById('marketTotal');
+                        const totalAmountSpan = document.getElementById('marketTotalAmount');
+                        if (amount > 0 && totalDiv && totalAmountSpan) {
+                            const total = amount * chipPrice;
+                            totalDiv.style.display = 'block';
+                            totalAmountSpan.textContent = total.toFixed(2);
+                        } else if (totalDiv) {
+                            totalDiv.style.display = 'none';
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Market yükleme hatası:', error);
+                marketInfoEl.innerHTML = `
+                    <div style="padding: 15px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <p><strong>Hata:</strong> Market bilgileri yüklenemedi.</p>
+                        <p style="font-size: 12px; margin-top: 5px;">${error.message || 'Bilinmeyen hata'}</p>
+                        <button onclick="loadMarket()" style="margin-top: 10px; padding: 5px 10px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer;">Tekrar Dene</button>
+                    </div>
+                `;
+            }
+        }
+
+        async function purchaseChips() {
+            const chipAmount = parseFloat(document.getElementById('marketChipAmount').value);
+            const paymentMethod = document.getElementById('marketPaymentMethod').value;
+
+            if (!chipAmount || chipAmount < 10) {
+                document.getElementById('marketError').textContent = 'Minimum 10 çip satın alabilirsiniz';
+                document.getElementById('marketError').style.display = 'block';
+                return;
+            }
+
+            if (chipAmount > 100000) {
+                document.getElementById('marketError').textContent = 'Maximum 100,000 çip satın alabilirsiniz';
+                document.getElementById('marketError').style.display = 'block';
+                return;
+            }
+
+            if (!paymentMethod) {
+                document.getElementById('marketError').textContent = 'Ödeme yöntemi gerekli';
+                document.getElementById('marketError').style.display = 'block';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/market/purchase`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${userToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        chipAmount,
+                        paymentMethod
+                    })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    alert(`${chipAmount} çip başarıyla satın alındı!\nToplam: ${data.totalPrice} TRY\nYeni Bakiye: ${data.newBalance} Çip`);
+                    document.getElementById('marketChipAmount').value = '';
+                    document.getElementById('marketPaymentMethod').value = '';
+                    document.getElementById('marketTotal').style.display = 'none';
+                    document.getElementById('marketError').style.display = 'none';
+                    loadWallet();
+                    loadDashboard();
+                } else {
+                    document.getElementById('marketError').textContent = data.message || 'Satın alma başarısız';
+                    document.getElementById('marketError').style.display = 'block';
+                }
+            } catch (error) {
+                document.getElementById('marketError').textContent = 'Bağlantı hatası!';
+                document.getElementById('marketError').style.display = 'block';
+            }
+        }
+
+        async function loadDashboard() {
+            try {
+                // Cüzdan
+                const walletRes = await fetch(`${API_URL}/wallets/me`, {
+                    headers: { 'Authorization': `Bearer ${userToken}` }
+                });
+                const wallet = await walletRes.json();
+                document.getElementById('availableBalance').textContent = wallet.availableBalance || 0;
+                document.getElementById('lockedBalance').textContent = wallet.lockedBalance || 0;
+
+                // İlanlarım
+                const listingsRes = await fetch(`${API_URL}/listings/my`, {
+                    headers: { 'Authorization': `Bearer ${userToken}` }
+                });
+                const listings = await listingsRes.json();
+                const activeListings = listings.filter(l => l.status === 'active').length;
+                document.getElementById('myListings').textContent = activeListings;
+
+                // Siparişlerim
+                const ordersRes = await fetch(`${API_URL}/orders`, {
+                    headers: { 'Authorization': `Bearer ${userToken}` }
+                });
+                const orders = await ordersRes.json();
+                const activeOrders = orders.filter(o => ['payment_pending', 'payment_confirmed'].includes(o.status)).length;
+                document.getElementById('myOrders').textContent = activeOrders;
+            } catch (error) {
+                console.error('Dashboard yüklenemedi:', error);
+            }
+        }
+
+        async function loadAllListings() {
+            const allListingsListEl = document.getElementById('allListingsList');
+            if (!allListingsListEl) {
+                console.error('allListingsList element bulunamadı');
+                return;
+            }
+
+            allListingsListEl.innerHTML = '<p>İlanlar yükleniyor...</p>';
+
+            try {
+                const response = await fetch(`${API_URL}/listings?page=1&limit=50`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const listings = data.listings || [];
+
+                if (listings.length === 0) {
+                    allListingsListEl.innerHTML = '<p>Henüz aktif ilan bulunmuyor.</p>';
+                    return;
+                }
+
+                let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">';
+                listings.forEach(listing => {
+                    const isMyListing = currentUser && listing.seller?.id === currentUser.id;
+                    const createdAt = new Date(listing.createdAt).toLocaleString('tr-TR');
+                    const paymentMethods = Array.isArray(listing.paymentMethods) 
+                        ? listing.paymentMethods.join(', ') 
+                        : listing.paymentMethods || 'Belirtilmemiş';
+
+                    html += `
+                        <div style="border: 1px solid #ddd; border-radius: 12px; padding: 20px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+                                <div>
+                                    <h4 style="margin: 0; color: #1976d2; font-size: 20px;">${listing.amount} Çip</h4>
+                                    <p style="margin: 5px 0; color: #666; font-size: 14px;">Satıcı: ${listing.seller?.username || 'Bilinmiyor'}</p>
+                                </div>
+                                ${isMyListing ? '<span style="background: #4caf50; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px;">SİZİN İLANINIZ</span>' : ''}
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <p style="margin: 5px 0;"><strong>Fiyat:</strong> <span style="color: #4caf50; font-size: 18px; font-weight: bold;">${listing.price} ${listing.currency || 'TRY'}</span></p>
+                                <p style="margin: 5px 0; font-size: 13px; color: #666;"><strong>Ödeme:</strong> ${paymentMethods}</p>
+                                ${listing.description ? `<p style="margin: 5px 0; font-size: 13px; color: #666;">${listing.description.substring(0, 100)}${listing.description.length > 100 ? '...' : ''}</p>` : ''}
+                                <p style="margin: 5px 0; font-size: 11px; color: #999;">${createdAt}</p>
+                            </div>
+                            ${!isMyListing ? `
+                                <button class="btn" onclick="buyListing('${listing.id}', ${listing.amount}, ${listing.price}, '${listing.currency || 'TRY'}')" 
+                                    style="width: 100%; margin-top: 10px;">
+                                    💰 Satın Al
+                                </button>
+                            ` : `
+                                <button class="action-btn danger" onclick="cancelListing('${listing.id}')" style="width: 100%; margin-top: 10px;">
+                                    ❌ İlanı İptal Et
+                                </button>
+                            `}
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                allListingsListEl.innerHTML = html;
+            } catch (error) {
+                console.error('All listings loading error:', error);
+                allListingsListEl.innerHTML = `
+                    <div style="padding: 15px; background: #ffebee; border-radius: 8px; color: #c62828;">
+                        <p><strong>Hata:</strong> İlanlar yüklenemedi.</p>
+                        <p style="font-size: 12px; margin-top: 5px;">${error.message || 'Bilinmeyen hata'}</p>
+                        <button onclick="loadAllListings()" style="margin-top: 10px; padding: 5px 10px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer;">Tekrar Dene</button>
+                    </div>
+                `;
+            }
+        }
+
+        async function loadMyListings() {
+            try {
+                const response = await fetch(`${API_URL}/listings/my`, {
+                    headers: { 'Authorization': `Bearer ${userToken}` }
+                });
+                const listings = await response.json();
+                
+                let html = '<table><thead><tr><th>Miktar</th><th>Fiyat</th><th>Durum</th><th>İşlem</th></tr></thead><tbody>';
+                listings.forEach(listing => {
+                    html += `<tr>
+                        <td>${listing.amount} Çip</td>
+                        <td>${listing.price} ${listing.currency}</td>
+                        <td><span class="badge ${listing.status}">${listing.status}</span></td>
+                        <td>
+                            ${listing.status === 'active' ? `<button class="action-btn danger" onclick="cancelListing('${listing.id}')">İptal</button>` : ''}
+                        </td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                document.getElementById('myListingsList').innerHTML = html;
+            } catch (error) {
+                document.getElementById('myListingsList').innerHTML = '<p>İlanlar yüklenemedi.</p>';
+            }
+        }
+
+        async function createListing() {
+            const amount = parseFloat(document.getElementById('listingAmount').value);
+            const price = parseFloat(document.getElementById('listingPrice').value);
+            const currency = document.getElementById('listingCurrency').value;
+            const paymentMethodsStr = document.getElementById('listingPaymentMethods').value;
+            const description = document.getElementById('listingDescription').value;
+            const listingError = document.getElementById('listingError');
+
+            // Validation
+            if (!amount || amount <= 0) {
+                listingError.textContent = 'Geçerli bir çip miktarı girin';
+                listingError.style.display = 'block';
+                return;
+            }
+
+            if (!price || price <= 0) {
+                listingError.textContent = 'Geçerli bir fiyat girin';
+                listingError.style.display = 'block';
+                return;
+            }
+
+            if (!paymentMethodsStr || paymentMethodsStr.trim() === '') {
+                listingError.textContent = 'En az bir ödeme yöntemi girin';
+                listingError.style.display = 'block';
+                return;
+            }
+
+            const paymentMethods = paymentMethodsStr.split(',').map(m => m.trim()).filter(m => m.length > 0);
+
+            if (paymentMethods.length === 0) {
+                listingError.textContent = 'En az bir ödeme yöntemi girin';
+                listingError.style.display = 'block';
+                return;
+            }
+
+            listingError.style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_URL}/listings`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${userToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        amount, 
+                        price, 
+                        currency: currency || 'TRY', 
+                        paymentMethods, 
+                        description: description || undefined 
+                    })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    alert('İlan başarıyla oluşturuldu!');
+                    document.getElementById('listingAmount').value = '';
+                    document.getElementById('listingPrice').value = '';
+                    document.getElementById('listingPaymentMethods').value = '';
+                    document.getElementById('listingDescription').value = '';
+                    listingError.style.display = 'none';
+                    loadMyListings();
+                    loadAllListings();
+                    loadDashboard();
+                    alert('✅ İlan başarıyla oluşturuldu!\n\n📌 Çipleriniz kilitlendi ve ilan aktif durumda.\n🛒 Diğer kullanıcılar ilanınızı görebilir ve satın alabilir.');
+                } else {
+                    listingError.textContent = data.message || 'İlan oluşturulamadı!';
+                    listingError.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Listing creation error:', error);
+                listingError.textContent = 'Bağlantı hatası: ' + (error.message || 'Bilinmeyen hata');
+                listingError.style.display = 'block';
+            }
+        }
+
+        async function buyListing(listingId, amount, price, currency) {
+            if (!confirm(`${amount} çip için ${price} ${currency} ödemek istediğinizden emin misiniz?\n\nBu işlem bir sipariş oluşturacak ve ödeme yapmanız gerekecektir.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/orders`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${userToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ listingId })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    alert(`Sipariş başarıyla oluşturuldu!\n\nSipariş ID: ${data.id.substring(0, 8)}...\n\nLütfen ödeme yapın ve ödeme onayını bekleyin.`);
+                    loadMyOrders();
+                    loadAllListings();
+                    loadDashboard();
+                    // Siparişler sekmesine geç
+                    const ordersLink = document.querySelector('a[onclick*="orders"]');
+                    if (ordersLink) {
+                        showSection('orders', { target: ordersLink });
+                    }
+                } else {
+                    alert(data.message || 'Sipariş oluşturulamadı!');
+                }
+            } catch (error) {
+                console.error('Buy listing error:', error);
+                alert('Bağlantı hatası: ' + (error.message || 'Bilinmeyen hata'));
+            }
+        }
+
+        async function cancelListing(listingId) {
+            if (!confirm('İlanı iptal etmek istediğinizden emin misiniz?\n\nKilitli çipleriniz geri alınacaktır.')) return;
+
+            try {
+                const response = await fetch(`${API_URL}/listings/${listingId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${userToken}` }
+                });
+
+                if (response.ok) {
+                    alert('İlan iptal edildi! Çipleriniz geri alındı.');
+                    loadMyListings();
+                    loadAllListings();
+                    loadDashboard();
+                } else {
+                    const data = await response.json();
+                    alert(data.message || 'İlan iptal edilemedi!');
+                }
+            } catch (error) {
+                console.error('Cancel listing error:', error);
+                alert('Hata oluştu: ' + (error.message || 'Bilinmeyen hata'));
+            }
+        }
+
+        async function loadMyOrders() {
+            try {
+                const response = await fetch(`${API_URL}/orders`, {
+                    headers: { 'Authorization': `Bearer ${userToken}` }
+                });
+                const orders = await response.json();
+                
+                let html = '<table><thead><tr><th>Miktar</th><th>Fiyat</th><th>Durum</th><th>İşlem</th></tr></thead><tbody>';
+                orders.forEach(order => {
+                    const isBuyer = order.buyerId === currentUser.id;
+                    const isSeller = order.sellerId === currentUser.id;
+                    
+                    html += `<tr>
+                        <td>${order.amount} Çip</td>
+                        <td>${order.price} TRY</td>
+                        <td><span class="badge ${order.status}">${order.status}</span></td>
+                        <td>
+                            ${isBuyer && order.status === 'payment_pending' ? 
+                                `<button class="action-btn success" onclick="openPaymentModal('${order.id}', ${order.price})">💳 Ödeme Yap</button>` : ''}
+                            ${isSeller && order.status === 'payment_confirmed' ? 
+                                `<button class="action-btn success" onclick="completeOrder('${order.id}')">Onayla</button>` : ''}
+                        </td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                document.getElementById('myOrdersList').innerHTML = html;
+            } catch (error) {
+                document.getElementById('myOrdersList').innerHTML = '<p>Siparişler yüklenemedi.</p>';
+            }
+        }
+
+        function openPaymentModal(orderId, amount) {
+            document.getElementById('paymentOrderId').value = orderId;
+            document.getElementById('bankPaymentOrderId').value = orderId;
+            document.getElementById('paymentModal').style.display = 'block';
+            showPaymentTab('card');
+        }
+
+        function closePaymentModal() {
+            document.getElementById('paymentModal').style.display = 'none';
+            document.getElementById('cardPaymentForm').reset();
+            document.getElementById('bankPaymentForm').reset();
+            document.getElementById('paymentError').style.display = 'none';
+        }
+
+        function showPaymentTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.payment-tab').forEach(t => t.style.display = 'none');
+            
+            if (tab === 'card') {
+                document.querySelector('.tab-btn[onclick*="card"]').classList.add('active');
+                document.getElementById('cardPaymentTab').style.display = 'block';
+            } else {
+                document.querySelector('.tab-btn[onclick*="bank"]').classList.add('active');
+                document.getElementById('bankPaymentTab').style.display = 'block';
+            }
+        }
+
+        // Kart ile ödeme
+        document.getElementById('cardPaymentForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const paymentError = document.getElementById('paymentError');
+            paymentError.style.display = 'none';
+
+            const orderId = document.getElementById('paymentOrderId').value;
+            const cardNumber = document.getElementById('cardNumber').value.replace(/\s/g, '');
+            const expireMonth = document.getElementById('expireMonth').value;
+            const expireYear = document.getElementById('expireYear').value;
+            const cvc = document.getElementById('cardCvc').value;
+            const cardHolderName = document.getElementById('cardHolderName').value;
+
+            if (!cardNumber || !expireMonth || !expireYear || !cvc || !cardHolderName) {
+                paymentError.textContent = 'Lütfen tüm alanları doldurun';
+                paymentError.style.display = 'block';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/payments/card`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${userToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        orderId,
+                        cardNumber,
+                        expireMonth,
+                        expireYear,
+                        cvc,
+                        cardHolderName
+                    })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    alert('✅ Ödeme başarıyla tamamlandı!');
+                    closePaymentModal();
+                    loadMyOrders();
+                    loadDashboard();
+                } else {
+                    paymentError.textContent = data.message || 'Ödeme başarısız!';
+                    paymentError.style.display = 'block';
+                }
+            } catch (error) {
+                paymentError.textContent = 'Bağlantı hatası: ' + (error.message || 'Bilinmeyen hata');
+                paymentError.style.display = 'block';
+            }
+        });
+
+        // IBAN/Havale ile ödeme
+        document.getElementById('bankPaymentForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const paymentError = document.getElementById('paymentError');
+            paymentError.style.display = 'none';
+
+            const orderId = document.getElementById('bankPaymentOrderId').value;
+            const iban = document.getElementById('iban').value;
+            const bankName = document.getElementById('bankName').value;
+            const accountHolder = document.getElementById('accountHolder').value;
+            const receiptUrl = document.getElementById('receiptUrl').value;
+            const notes = document.getElementById('paymentNotes').value;
+
+            if (!iban || !bankName || !accountHolder) {
+                paymentError.textContent = 'Lütfen IBAN, Banka Adı ve Hesap Sahibi alanlarını doldurun';
+                paymentError.style.display = 'block';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/payments/bank-transfer`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${userToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        orderId,
+                        iban,
+                        bankName,
+                        accountHolder,
+                        receiptUrl: receiptUrl || undefined,
+                        notes: notes || undefined
+                    })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    alert('✅ Havale bilgileri gönderildi!\n\nAdmin onayı bekleniyor. Onaylandıktan sonra siparişiniz güncellenecektir.');
+                    closePaymentModal();
+                    loadMyOrders();
+                } else {
+                    paymentError.textContent = data.message || 'Havale bilgileri gönderilemedi!';
+                    paymentError.style.display = 'block';
+                }
+            } catch (error) {
+                paymentError.textContent = 'Bağlantı hatası: ' + (error.message || 'Bilinmeyen hata');
+                paymentError.style.display = 'block';
+            }
+        });
+
+        // Modal dışına tıklanınca kapat
+        window.onclick = function(event) {
+            const modal = document.getElementById('paymentModal');
+            if (event.target == modal) {
+                closePaymentModal();
+            }
+        }
+
+        // Kart numarası formatı
+        document.getElementById('cardNumber').addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\s/g, '');
+            let formattedValue = value.match(/.{1,4}/g)?.join(' ') || value;
+            e.target.value = formattedValue;
+        });
+
+        async function completeOrder(orderId) {
+            try {
+                const response = await fetch(`${API_URL}/orders/${orderId}/complete`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${userToken}` }
+                });
+
+                if (response.ok) {
+                    alert('Sipariş tamamlandı!');
+                    loadMyOrders();
+                    loadDashboard();
+                }
+            } catch (error) {
+                alert('Hata oluştu!');
+            }
+        }
+
+        async function loadWallet() {
+            try {
+                const response = await fetch(`${API_URL}/wallets/me`, {
+                    headers: { 'Authorization': `Bearer ${userToken}` }
+                });
+                const wallet = await response.json();
+                
+                document.getElementById('walletInfo').innerHTML = `
+                    <p><strong>Kullanılabilir Bakiye:</strong> ${wallet.availableBalance || 0} Çip</p>
+                    <p><strong>Kilitli Bakiye:</strong> ${wallet.lockedBalance || 0} Çip</p>
+                    <p><strong>Toplam Kazanç:</strong> ${wallet.totalEarned || 0} TRY</p>
+                    <p><strong>Toplam Harcama:</strong> ${wallet.totalSpent || 0} TRY</p>
+                `;
+            } catch (error) {
+                document.getElementById('walletInfo').innerHTML = '<p>Cüzdan bilgileri yüklenemedi.</p>';
+            }
+        }
+    </script>
+</body>
+</html>
+
