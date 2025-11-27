@@ -9,7 +9,9 @@
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "server": "cd server && npm start",
     "server:dev": "cd server && npm run dev",
-    "server:install": "cd server && npm install"
+    "server:install": "cd server && npm install",
+    "backup": "powershell -ExecutionPolicy Bypass -File backup-to-github.ps1",
+    "backup:git": "git add . && git commit -m \"Auto backup\" && git push origin main"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
