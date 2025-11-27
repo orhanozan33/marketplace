@@ -1,85 +1,66 @@
-# 🍁 Canada Marketplace
+# Marketplace System
 
-Kanada için coğrafi konum tabanlı marketplace uygulaması. Konut, araç ve al-sat ilanları için harita tabanlı arama.
+Marketplace sistemi - İlan yönetimi, mesajlaşma, rezervasyon ve satış özellikleri ile tam kapsamlı bir platform.
 
-## ✨ Özellikler
+## Özellikler
 
-- 🗺️ **Harita Tabanlı Arama**: Leaflet ile interaktif harita
-- 🏠 **3 Ana Kategori**: Konut, Araç, Al & Sat
-- 🌍 **Çok Dilli Destek**: Türkçe, İngilizce, Fransızca
-- 📍 **Konum Bazlı Filtreleme**: Yarıçap bazlı arama
-- ✨ **Animasyonlar**: Framer Motion ile yanıp sönen markerlar
-- 📱 **Responsive Tasarım**: Tailwind CSS ile modern UI
-- 🔐 **Supabase Entegrasyonu**: Backend ve authentication
+- 🏠 Konut, Araç ve Al-Sat ilanları
+- 💬 Gerçek zamanlı mesajlaşma
+- 📍 Google Maps entegrasyonu
+- ⭐ Kullanıcı değerlendirme sistemi
+- 🔒 Rezervasyon ve satış yönetimi
+- 👤 Kullanıcı profil yönetimi
+- 📸 Resim ve video yükleme
 
-## 🚀 Kurulum
+## Kurulum
 
-### 1. Bağımlılıkları Yükle
+### Backend
+```bash
+cd server
+npm install
+npm start
+```
 
+### Frontend
 ```bash
 npm install
-```
-
-### 2. Environment Variables
-
-`.env` dosyası oluşturun:
-
-```env
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-```
-
-### 3. Supabase Kurulumu
-
-1. [Supabase](https://supabase.com) hesabı oluşturun
-2. Yeni proje oluşturun
-3. `supabase-schema.sql` dosyasını Supabase SQL Editor'de çalıştırın
-4. Storage bucket oluşturun: `listing-images` (public)
-
-### 4. Geliştirme Sunucusunu Başlat
-
-```bash
 npm run dev
 ```
 
-Tarayıcıda [http://localhost:5173](http://localhost:5173) adresini açın.
+## GitHub Yedekleme
 
-## 📁 Proje Yapısı
+Proje otomatik olarak GitHub'a yedeklenir. Manuel yedekleme için:
 
-```
-src/
-├── components/
-│   ├── Layout/          # Ana layout bileşenleri
-│   ├── Map/             # Harita bileşenleri
-│   ├── Listings/        # Kategori filtreleri
-│   └── Forms/           # Form bileşenleri
-├── context/             # React Context (Language)
-├── services/            # API ve Supabase servisleri
-├── utils/              # Yardımcı fonksiyonlar ve sabitler
-└── styles/              # Global CSS
+### PowerShell Script ile:
+```powershell
+.\backup-to-github.ps1
 ```
 
-## 🛠️ Teknolojiler
+### Batch Script ile:
+```cmd
+backup-to-github.bat
+```
 
-- **React 18** - UI Framework
-- **Vite** - Build Tool
-- **Tailwind CSS** - Styling
-- **Leaflet + React-Leaflet** - Harita
-- **Framer Motion** - Animasyonlar
-- **Supabase** - Backend & Database
-- **Lucide React** - İkonlar
+### Manuel Yedekleme:
+```bash
+git add .
+git commit -m "Backup - $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+git push origin main
+```
 
-## 📝 Kullanım
+## Yedekleme Konumları
 
-1. **Kategori Seç**: Sol sidebar'dan Konut, Araç veya Al & Sat seçin
-2. **Filtrele**: Kategoriye özel filtreleri kullanın
-3. **Haritada Keşfet**: Yanıp sönen markerlara tıklayarak ilanları görün
-4. **İlan Ver**: "İlan Ver" butonuna tıklayarak yeni ilan oluşturun
+- **GitHub**: https://github.com/orhanozan33/marketplace.git
+- **Yerel Yedek**: `C:\Users\orhan\OneDrive\Masaüstü\yedek`
 
-## 🌐 Dil Değiştirme
+## Teknolojiler
 
-Header'daki dil butonlarından (TR/EN/FR) dil değiştirebilirsiniz.
+- **Backend**: Node.js, Express
+- **Frontend**: React, Vite
+- **Database**: JSON file-based
+- **Maps**: Google Maps API
+- **Styling**: Tailwind CSS
 
-## 📄 Lisans
+## Lisans
 
-MIT
+Bu proje özel bir projedir.
