@@ -1,8 +1,8 @@
 {
   "ad1": {
-    "fileUrl": "http://localhost:3000/uploads/advertisements/1764130698089_1.jpeg",
+    "fileUrl": "",
     "url": "",
-    "active": true
+    "active": false
   },
   "ad2": {
     "fileUrl": "",
@@ -10,9 +10,9 @@
     "active": false
   },
   "ad3": {
-    "fileUrl": "http://localhost:3000/uploads/advertisements/1764130727779_2.png",
+    "fileUrl": "",
     "url": "",
-    "active": true
+    "active": false
   },
   "ad4": {
     "fileUrl": "",
