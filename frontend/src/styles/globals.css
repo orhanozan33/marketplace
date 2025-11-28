@@ -1,0 +1,353 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   Cross-Browser Reset & Normalize
+   ============================================ */
+@layer base {
+  /* CSS Variables for consistent sidebar widths across all pages */
+  :root {
+    --sidebar-min-width: 280px;
+    --sidebar-default-width: 300px;
+    --sidebar-max-width: 400px;
+    --sidebar-filters-min: 250px;
+    --sidebar-filters-default: 284px;
+    --sidebar-filters-max: 350px;
+    --sidebar-dashboard-min: 280px;
+    --sidebar-dashboard-default: 320px;
+    --sidebar-dashboard-max: 320px;
+    --sidebar-listing-min: 280px;
+    --sidebar-listing-default: 320px;
+    --sidebar-listing-max: 400px;
+  }
+
+  /* Box-sizing reset */
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+  }
+
+  /* Root font size for rem calculations */
+  html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-gray-50;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Image responsive behavior */
+  img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  /* Container containment for better performance */
+  .responsive-container {
+    contain: layout style paint;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  /* Flexbox fallback for older browsers */
+  .flex-container {
+    display: -webkit-box;
+    display: -webkit-flex;
+    display: -moz-box;
+    display: -ms-flexbox;
+    display: flex;
+  }
+}
+
+/* ============================================
+   Animations - Blink Effects
+   ============================================ */
+
+/* LED Blink Animation - Beyaz LED için */
+@keyframes led-blink {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.8), 0 0 20px rgba(255, 255, 255, 0.6);
+  }
+  50% {
+    opacity: 0.5;
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.4), 0 0 10px rgba(255, 255, 255, 0.3);
+  }
+}
+
+.animate-led-blink {
+  animation: led-blink 1s ease-in-out infinite;
+}
+
+/* Mail Icon Blink Animation */
+@keyframes mail-blink {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.1);
+  }
+}
+
+.animate-mail-blink {
+  animation: mail-blink 1.5s ease-in-out infinite;
+}
+
+/* Unread Message Blink Animation - Açık Yeşil */
+@keyframes unread-message-blink {
+  0%, 100% {
+    background-color: #4ade80; /* green-400 */
+    box-shadow: 0 0 10px rgba(74, 222, 128, 0.5);
+  }
+  50% {
+    background-color: #86efac; /* green-300 - daha açık */
+    box-shadow: 0 0 20px rgba(74, 222, 128, 0.8);
+  }
+}
+
+.animate-unread-blink {
+  animation: unread-message-blink 1.5s ease-in-out infinite;
+}
+
+/* Rezerve Edilmiş İlan Yanıp Sönme Animasyonu - Açık Kırmızı */
+@keyframes reserved-listing-blink {
+  0%, 100% {
+    background-color: #fee2e2; /* red-100 - açık kırmızı */
+    border-color: #fecaca; /* red-200 */
+  }
+  50% {
+    background-color: #fecaca; /* red-200 - biraz daha koyu */
+    border-color: #fca5a5; /* red-300 */
+  }
+}
+
+.animate-reserved-blink {
+  animation: reserved-listing-blink 1.5s ease-in-out infinite;
+}
+
+/* ============================================
+   Animations - Slide & Bounce Effects
+   ============================================ */
+
+/* Toast Slide-in Animation */
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+/* Rating Notification 3D Bounce Animation */
+@keyframes rating-notification-bounce {
+  0% {
+    transform: perspective(1000px) rotateX(10deg) rotateY(5deg) rotateZ(3deg) scale(0.8);
+    opacity: 0;
+  }
+  50% {
+    transform: perspective(1000px) rotateX(10deg) rotateY(5deg) rotateZ(3deg) scale(1.1);
+    opacity: 1;
+  }
+  100% {
+    transform: perspective(1000px) rotateX(10deg) rotateY(5deg) rotateZ(3deg) scale(1);
+    opacity: 1;
+  }
+}
+
+.rating-notification-3d {
+  animation: rating-notification-bounce 0.5s ease-in-out;
+  transform-style: preserve-3d;
+}
+
+/* ============================================
+   Leaflet Map Marker Animations
+   ============================================ */
+
+/* Leaflet Marker Pulse Animation */
+@keyframes pulse {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.3;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 0.1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.3;
+  }
+}
+
+.custom-pulsing-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.marker-container {
+  position: relative;
+}
+
+.pulse-ring {
+  position: absolute;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  opacity: 0.3;
+  animation: pulse 2s infinite;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.marker-pin {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border: 3px solid white;
+}
+
+.marker-pin span {
+  transform: rotate(45deg);
+  font-size: 18px;
+}
+
+/* ============================================
+   Custom Scrollbar Styles
+   ============================================ */
+
+/* Webkit Scrollbar (Chrome, Safari, Edge) */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Firefox Scrollbar */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f1f1;
+}
+
+/* ============================================
+   Responsive Container Utilities
+   ============================================ */
+
+/* Responsive clamp utilities for consistent sizing */
+.responsive-text {
+  font-size: clamp(0.625rem, 0.9vw, 0.75rem);
+}
+
+.responsive-text-sm {
+  font-size: clamp(0.5rem, 0.7vw, 0.625rem);
+}
+
+.responsive-text-lg {
+  font-size: clamp(0.75rem, 1.1vw, 0.875rem);
+}
+
+.responsive-icon {
+  width: clamp(0.75rem, 1vw, 0.875rem);
+  height: clamp(0.75rem, 1vw, 0.875rem);
+}
+
+.responsive-icon-sm {
+  width: clamp(0.5rem, 0.7vw, 0.625rem);
+  height: clamp(0.5rem, 0.7vw, 0.625rem);
+}
+
+/* Responsive spacing */
+.responsive-padding {
+  padding: clamp(0.5rem, 0.8vw, 0.625rem);
+}
+
+.responsive-gap {
+  gap: clamp(0.25rem, 0.5vw, 0.5rem);
+}
+
+/* Viewport-based width utilities */
+.responsive-width {
+  width: clamp(250px, 15vw, 320px);
+  max-width: clamp(400px, 30vw, 500px);
+}
+
+/* Consistent sidebar width utilities */
+.sidebar-filters {
+  min-width: var(--sidebar-filters-min);
+  width: var(--sidebar-filters-default);
+  max-width: var(--sidebar-filters-max);
+}
+
+.sidebar-listing {
+  min-width: var(--sidebar-listing-min);
+  width: var(--sidebar-listing-default);
+  max-width: var(--sidebar-listing-max);
+}
+
+.sidebar-dashboard {
+  min-width: var(--sidebar-dashboard-min);
+  width: var(--sidebar-dashboard-default);
+  max-width: var(--sidebar-dashboard-max);
+}
+
+/* CSS containment for better performance */
+.contain-layout {
+  contain: layout;
+  -webkit-contain: layout;
+}
+
+.contain-style {
+  contain: style;
+  -webkit-contain: style;
+}
+
+.contain-paint {
+  contain: paint;
+  -webkit-contain: paint;
+}
+
+.contain-strict {
+  contain: strict;
+  -webkit-contain: strict;
+}

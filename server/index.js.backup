@@ -1,0 +1,2300 @@
+import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
+import cors from 'cors';
+import { v4 as uuidv4 } from 'uuid';
+import { initDatabase, dbQuery, loadDatabase, saveDatabase } from './database/database.js';
+import { registerUser, loginUser, authenticateToken, requireAdmin, getUserById } from './auth/auth.js';
+import { getActiveAds, getAllAds, updateAd, deleteAd } from './advertisements/advertisements.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Veritabanını başlat
+initDatabase();
+
+// CORS ayarları
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true
+}));
+
+// Tüm istekleri logla
+app.use((req, res, next) => {
+  // Profil güncelleme isteklerini özellikle logla
+  if (req.url.includes('/api/users/') && req.url.includes('/profile') && req.method === 'PUT') {
+    console.log('');
+    console.log('🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨');
+    console.log('🚨🚨🚨 PROFİL GÜNCELLEME İSTEĞİ GLOBAL MIDDLEWARE\'DE! 🚨🚨🚨');
+    console.log('🚨 Method:', req.method);
+    console.log('🚨 URL:', req.url);
+    console.log('🚨 Original URL:', req.originalUrl);
+    console.log('🚨 Path:', req.path);
+    console.log('🚨 Content-Type:', req.get('Content-Type'));
+    console.log('🚨 Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨');
+    console.log('');
+  }
+  // Kullanıcı profil isteklerini özellikle logla
+  if (req.url.match(/^\/api\/users\/[^\/]+$/) && req.method === 'GET' && !req.url.includes('/profile')) {
+    console.log('');
+    console.log('👤👤👤 KULLANICI PROFİL İSTEĞİ GLOBAL MIDDLEWARE\'DE! 👤👤👤');
+    console.log('👤 Method:', req.method);
+    console.log('👤 URL:', req.url);
+    console.log('👤 Original URL:', req.originalUrl);
+    console.log('👤 Path:', req.path);
+    console.log('');
+  }
+  console.log('🌐 İstek alındı:', req.method, req.url);
+  console.log('🌐 Content-Type:', req.get('Content-Type'));
+  console.log('🌐 User-Agent:', req.get('User-Agent')?.substring(0, 50));
+  next();
+});
+
+// JSON ve form data desteği
+// ÖNEMLİ: express.json() ve urlencoded() multer ile çakışabilir
+// Bu yüzden sadece JSON ve urlencoded istekler için kullanıyoruz
+// Multer route'ları için bu middleware'ler çalışmayacak
+const jsonMiddleware = express.json();
+const urlencodedMiddleware = express.urlencoded({ extended: true });
+
+app.use((req, res, next) => {
+  const contentType = req.get('Content-Type') || '';
+  
+  // Profil güncelleme endpoint'i için json/urlencoded kullanma
+  if (req.url.includes('/api/users/') && req.url.includes('/profile') && req.method === 'PUT') {
+    console.log('⏭️ Profil güncelleme endpoint - json/urlencoded atlanıyor');
+    console.log('🔍 URL:', req.url);
+    console.log('🔍 Method:', req.method);
+    console.log('🔍 Content-Type:', contentType);
+    return next();
+  }
+  
+  if (contentType.includes('multipart/form-data')) {
+    console.log('⏭️ Multipart istek - json/urlencoded atlanıyor');
+    return next();
+  }
+  
+  if (contentType.includes('application/json')) {
+    return jsonMiddleware(req, res, next);
+  }
+  
+  if (contentType.includes('application/x-www-form-urlencoded')) {
+    return urlencodedMiddleware(req, res, next);
+  }
+  
+  // Content-Type yoksa veya başka bir şeyse, json dene
+  jsonMiddleware(req, res, next);
+});
+
+// Uploads klasörünü oluştur
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Alt klasörler oluştur
+const listingsDir = path.join(uploadsDir, 'listings');
+if (!fs.existsSync(listingsDir)) {
+  fs.mkdirSync(listingsDir, { recursive: true });
+}
+
+const advertisementsDir = path.join(uploadsDir, 'advertisements');
+if (!fs.existsSync(advertisementsDir)) {
+  fs.mkdirSync(advertisementsDir, { recursive: true });
+}
+
+// Multer yapılandırması
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    // FormData'dan folder'ı al (multer body'yi parse etmeden önce çalışır, bu yüzden req.body boş olabilir)
+    // Alternatif: req.query veya header'dan al, ya da dosya yolu içinden çıkar
+    let folder = 'listings'; // Varsayılan
+    
+    // FormData'dan folder'ı almak için özel bir middleware gerekebilir
+    // Şimdilik endpoint'lerde manuel olarak kontrol edeceğiz
+    // Ama burada da kontrol edelim
+    if (req.body && req.body.folder) {
+      folder = req.body.folder;
+    } else if (req.query && req.query.folder) {
+      folder = req.query.folder;
+    }
+    
+    const folderPath = path.join(uploadsDir, folder);
+    
+    // Klasör yoksa oluştur
+    if (!fs.existsSync(folderPath)) {
+      fs.mkdirSync(folderPath, { recursive: true });
+    }
+    
+    console.log(`📁 Multer destination: ${folderPath} (folder: ${folder})`);
+    cb(null, folderPath);
+  },
+  filename: (req, file, cb) => {
+    // Dosya adını temizle ve benzersiz yap
+    const timestamp = Date.now();
+    const sanitizedName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const ext = path.extname(sanitizedName);
+    const name = path.basename(sanitizedName, ext);
+    const uniqueName = `${timestamp}_${name}${ext}`;
+    cb(null, uniqueName);
+  }
+});
+
+// Dosya filtreleme (sadece resimler)
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = /jpeg|jpg|png|gif|webp/;
+  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+  const mimetype = allowedTypes.test(file.mimetype);
+
+  if (mimetype && extname) {
+    return cb(null, true);
+  } else {
+    cb(new Error('Sadece resim dosyaları yüklenebilir (JPEG, PNG, GIF, WEBP)'));
+  }
+};
+
+// Multer middleware
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB
+  },
+  fileFilter: fileFilter
+});
+
+// Statik dosya servisi (yüklenen resimleri göster)
+app.use('/uploads', express.static(uploadsDir));
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', message: 'Backend server is running' });
+});
+
+// ==================== AUTH ROUTES ====================
+
+// Kullanıcı kayıt
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { email, password, displayName, phone, postalCode } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email ve şifre gerekli' });
+    }
+
+    if (!phone || !postalCode) {
+      return res.status(400).json({ error: 'Telefon ve posta kodu zorunludur' });
+    }
+
+    const result = await registerUser(email, password, displayName, phone, postalCode);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Kullanıcı giriş
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    console.log('🔐 Login isteği alındı:', req.body);
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      console.log('❌ Email veya şifre eksik');
+      return res.status(400).json({ error: 'Email ve şifre gerekli' });
+    }
+
+    console.log('✅ Login fonksiyonu çağrılıyor...');
+    const result = await loginUser(email, password);
+    console.log('✅ Login başarılı:', result.user?.email);
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Login hatası:', error.message);
+    res.status(401).json({ error: error.message });
+  }
+});
+
+// Kullanıcı bilgilerini al
+app.get('/api/auth/me', authenticateToken, (req, res) => {
+  const user = dbQuery.getUserById(req.userId);
+  if (user) {
+    const { password: _, ...userWithoutPassword } = user;
+    console.log('📤 /api/auth/me - Kullanıcı bilgileri:', {
+      id: userWithoutPassword.id,
+      photoURL: userWithoutPassword.photoURL,
+      displayName: userWithoutPassword.displayName
+    });
+    res.json({ user: userWithoutPassword });
+  } else {
+    res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+  }
+});
+
+// ==================== LISTINGS ROUTES ====================
+
+// Tüm ilanları getir
+app.get('/api/listings', (req, res) => {
+  try {
+    const { category, status, includeSold } = req.query;
+    
+    // Admin paneli için tüm ilanları göster (status filtresi yoksa)
+    const filters = {};
+    if (category) filters.category = category;
+    if (status) filters.status = status;
+    
+    console.log('📋 GET /api/listings - Filtreler:', filters, 'includeSold:', includeSold);
+    let listings = dbQuery.getListings(filters);
+    
+    // Satılan ilanları kontrol et
+    const soldListings = dbQuery.getSoldListings();
+    const soldListingIds = new Set(soldListings.map(sale => sale.listingId));
+    
+    // Eğer includeSold parametresi yoksa satılan ilanları filtrele
+    if (!includeSold || includeSold !== 'true') {
+      console.log('🔍 Satılan ilanlar:', soldListings.length, soldListings.map(s => s.listingId));
+      const beforeFilterCount = listings.length;
+      listings = listings.filter(listing => !soldListingIds.has(listing.id));
+      const afterFilterCount = listings.length;
+      console.log('📋 Filtreleme öncesi:', beforeFilterCount, 'ilan');
+      console.log('📋 Filtreleme sonrası:', afterFilterCount, 'ilan (satılanlar çıkarıldı)');
+      console.log('📋 Backend\'den dönen ilan sayısı (satılanlar hariç):', listings.length);
+    } else {
+      console.log('📋 Satılan ilanlar dahil ediliyor');
+      console.log('📋 Satılan ilan ID\'leri:', Array.from(soldListingIds));
+      // Her ilan için isSold flag'ini ekle
+      listings = listings.map(listing => {
+        const isSold = soldListingIds.has(listing.id);
+        if (isSold) {
+          console.log('✅ İlan satıldı olarak işaretlendi:', listing.id, listing.title);
+        }
+        return {
+          ...listing,
+          isSold: isSold
+        };
+      });
+      console.log('📋 Toplam ilan sayısı (satılanlar dahil):', listings.length);
+      console.log('📋 Satılan ilan sayısı:', listings.filter(l => l.isSold).length);
+      console.log('📋 Satılan ilanlar:', listings.filter(l => l.isSold).map(l => ({ id: l.id, title: l.title, userId: l.userId })));
+    }
+    if (listings.length > 0) {
+      console.log('📋 İlk ilan:', { id: listings[0].id, title: listings[0].title, userId: listings[0].userId });
+    }
+    
+    // Listing details'leri de ekle
+    const listingsWithDetails = listings.map(listing => {
+      let details = {};
+      try {
+        details = dbQuery.getListingDetails(listing.id);
+        if (listing.category === 'housing' && Object.keys(details || {}).length > 0) {
+          console.log(`📖 İlan ${listing.id} için details bulundu:`, details);
+        }
+      } catch (detailsError) {
+        console.error(`❌ İlan ${listing.id} için details okunurken hata:`, detailsError);
+        details = {};
+      }
+      
+      // Resim URL'lerini düzelt (relative URL ise full URL'e çevir)
+      let imageUrl = listing.image;
+      let imagesArray = [];
+      try {
+        imagesArray = listing.images ? (typeof listing.images === 'string' ? JSON.parse(listing.images) : listing.images) : [listing.image].filter(Boolean);
+      } catch (parseError) {
+        console.error(`❌ İlan ${listing.id} için images parse edilirken hata:`, parseError);
+        imagesArray = listing.image ? [listing.image] : [];
+      }
+      
+      // URL'leri normalize et (userId klasörünü kaldır)
+      const normalizeImageUrl = (url) => {
+        if (!url) return url;
+        try {
+          // Eğer userId klasörü varsa kaldır (eski format: /uploads/listings/userId/filename)
+          // Yeni format: /uploads/listings/filename
+          if (url.includes('/uploads/listings/')) {
+            const parts = url.split('/uploads/listings/');
+            if (parts.length > 1) {
+              const filename = parts[1].split('/').pop(); // Son kısmı al (filename)
+              url = `/uploads/listings/${filename}`;
+            }
+          }
+          // Relative URL'leri full URL'e çevir
+          if (url.startsWith('/uploads/')) {
+            url = `${req.protocol}://${req.get('host')}${url}`;
+          }
+        } catch (urlError) {
+          console.error(`❌ URL normalize edilirken hata:`, urlError);
+        }
+        return url;
+      };
+      
+      imageUrl = normalizeImageUrl(imageUrl);
+      imagesArray = imagesArray.map(normalizeImageUrl).filter(Boolean);
+      
+      // Videoları parse et
+      let videosArray = [];
+      try {
+        videosArray = listing.videos ? (typeof listing.videos === 'string' ? JSON.parse(listing.videos) : listing.videos) : [];
+        videosArray = videosArray.map(normalizeImageUrl).filter(Boolean);
+      } catch (videoError) {
+        console.error(`❌ İlan ${listing.id} için videos parse edilirken hata:`, videoError);
+        videosArray = [];
+      }
+      
+      // Kullanıcı bilgilerini al (telefon numarası için)
+      const listingUser = dbQuery.getUserById(listing.userId);
+      
+      // Debug log
+      if (listing.category === 'housing' && Object.keys(details || {}).length > 0) {
+        console.log(`📤 İlan ${listing.id} için details:`, details);
+      }
+      
+      // isSold flag'ini açıkça koru (spread operator ile kaybolabilir)
+      const isSoldValue = listing.isSold === true || listing.isSold === 'true' || listing.isSold === 1 || listing.isSold === '1';
+      
+      return {
+        ...listing,
+        position: [listing.latitude, listing.longitude],
+        details: details || {},
+        image: imageUrl || imagesArray[0] || `https://placehold.co/300x200/3B82F6/white?text=${listing.category}`,
+        images: imagesArray.length > 0 ? imagesArray : [imageUrl || `https://placehold.co/300x200/3B82F6/white?text=${listing.category}`].filter(Boolean),
+        videos: videosArray,
+        userPhone: listingUser?.phone || null, // Kullanıcı telefon numarası
+        userDisplayName: listingUser?.displayName || null, // Kullanıcı adı
+        userPhotoURL: listingUser?.photoURL || null, // Kullanıcı profil resmi
+        showPhone: listing.showPhone !== undefined ? listing.showPhone : true,
+        price: typeof listing.price === 'string' ? parseFloat(listing.price) || 0 : (listing.price || 0),
+        createdAt: listing.createdAt,
+        created_at: listing.createdAt,
+        isSold: isSoldValue  // isSold flag'ini açıkça set et
+      };
+    });
+    
+    // Debug: isSold flag'lerini kontrol et
+    if (includeSold === 'true') {
+      const soldCount = listingsWithDetails.filter(l => l.isSold === true).length;
+      console.log('📋 Response\'da satılan ilan sayısı:', soldCount);
+      console.log('📋 Response\'da satılan ilanlar:', listingsWithDetails.filter(l => l.isSold === true).map(l => ({ id: l.id, title: l.title, userId: l.userId, isSold: l.isSold })));
+      console.log('📋 Response\'da tüm ilanların isSold değerleri:', listingsWithDetails.map(l => ({ id: l.id, title: l.title, isSold: l.isSold, isSoldType: typeof l.isSold })));
+    }
+    
+    res.json(listingsWithDetails);
+  } catch (error) {
+    console.error('Error fetching listings:', error);
+    res.status(500).json({ error: 'İlanlar yüklenirken hata oluştu' });
+  }
+});
+
+// Tek ilan getir
+app.get('/api/listings/:id', (req, res) => {
+  try {
+    const listing = dbQuery.getListingById(req.params.id);
+    
+    if (!listing) {
+      return res.status(404).json({ error: 'İlan bulunamadı' });
+    }
+    
+    console.log('📖 Tek ilan getiriliyor:', listing.id);
+    const details = dbQuery.getListingDetails(listing.id);
+    console.log('📖 Details sonucu:', details, 'Keys:', Object.keys(details || {}));
+    
+    // Resim URL'lerini düzelt
+    let imageUrl = listing.image;
+    let imagesArray = listing.images ? (typeof listing.images === 'string' ? JSON.parse(listing.images) : listing.images) : [listing.image].filter(Boolean);
+    
+    // URL'leri normalize et (userId klasörünü kaldır)
+    const normalizeImageUrl = (url) => {
+      if (!url) return url;
+      // Eğer userId klasörü varsa kaldır (eski format: /uploads/listings/userId/filename)
+      // Yeni format: /uploads/listings/filename
+      if (url.includes('/uploads/listings/')) {
+        const parts = url.split('/uploads/listings/');
+        if (parts.length > 1) {
+          const filename = parts[1].split('/').pop(); // Son kısmı al (filename)
+          url = `/uploads/listings/${filename}`;
+        }
+      }
+      // Relative URL'leri full URL'e çevir
+      if (url.startsWith('/uploads/')) {
+        url = `${req.protocol}://${req.get('host')}${url}`;
+      }
+      return url;
+    };
+    
+    imageUrl = normalizeImageUrl(imageUrl);
+    imagesArray = imagesArray.map(normalizeImageUrl);
+    
+    // Videoları parse et
+    let videosArray = listing.videos ? (typeof listing.videos === 'string' ? JSON.parse(listing.videos) : listing.videos) : [];
+    videosArray = videosArray.map(normalizeImageUrl);
+    
+    // Kullanıcı bilgilerini al (telefon numarası için)
+    const listingUser = dbQuery.getUserById(listing.userId);
+    
+    console.log('📤 Tek ilan getiriliyor:', listing.id);
+    console.log('📤 Details:', details);
+    console.log('📤 Details keys:', Object.keys(details || {}));
+    
+    res.json({
+      ...listing,
+      position: [listing.latitude, listing.longitude],
+      details: details || {},
+      image: imageUrl || imagesArray[0] || `https://placehold.co/300x200/3B82F6/white?text=${listing.category}`,
+      images: imagesArray.length > 0 ? imagesArray : [imageUrl || `https://placehold.co/300x200/3B82F6/white?text=${listing.category}`],
+      videos: videosArray,
+      userPhone: listingUser?.phone || null, // Kullanıcı telefon numarası
+      userDisplayName: listingUser?.displayName || null, // Kullanıcı adı
+      userPhotoURL: listingUser?.photoURL || null, // Kullanıcı profil resmi
+      showPhone: listing.showPhone !== undefined ? listing.showPhone : true
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Yeni ilan oluştur
+app.post('/api/listings', authenticateToken, (req, res) => {
+  try {
+    const listingData = req.body;
+    
+    const listing = dbQuery.createListing({
+      userId: req.userId,
+      category: listingData.category,
+      title: listingData.title,
+      description: listingData.description || '',
+      price: listingData.price || 0,
+      latitude: listingData.latitude || listingData.position?.[0] || 49.2827,
+      longitude: listingData.longitude || listingData.position?.[1] || -123.1207,
+      address: listingData.address || listingData.postalCode || '',
+      postalCode: listingData.postalCode || '',
+      city: listingData.city || '',
+      province: listingData.province || '',
+      image: listingData.image || '',
+      images: JSON.stringify(listingData.images || [listingData.image].filter(Boolean)),
+      videos: JSON.stringify(listingData.videos || []),
+      showPhone: listingData.showPhone !== undefined ? listingData.showPhone : true,
+      status: listingData.status || 'active',
+      views: 0,
+      // Housing listing alanları
+      listingType: listingData.listingType || null,
+      propertyType: listingData.propertyType || null,
+      bedrooms: listingData.bedrooms || null,
+      bathrooms: listingData.bathrooms || null,
+      sqft: listingData.sqft || null,
+      userPhone: listingData.userPhone || null
+    });
+    
+    // Details varsa kaydet
+    console.log('📥 İlan oluşturuluyor, details:', listingData.details);
+    console.log('📥 Details keys:', listingData.details ? Object.keys(listingData.details) : 'null');
+    if (listingData.details && Object.keys(listingData.details).length > 0) {
+      console.log('💾 Details kaydediliyor:', listingData.details);
+      dbQuery.saveListingDetails(listing.id, listingData.details);
+    } else {
+      console.log('⚠️ Details boş veya yok, kaydedilmiyor');
+    }
+    
+    const details = dbQuery.getListingDetails(listing.id);
+    
+    // Kullanıcı bilgilerini al (telefon numarası için)
+    const listingUser = dbQuery.getUserById(listing.userId);
+    
+    res.status(201).json({
+      ...listing,
+      position: [listing.latitude, listing.longitude],
+      details: details || {},
+      images: listing.images ? (typeof listing.images === 'string' ? JSON.parse(listing.images) : listing.images) : [listing.image].filter(Boolean),
+      videos: listing.videos ? (typeof listing.videos === 'string' ? JSON.parse(listing.videos) : listing.videos) : [],
+      userPhone: listingUser?.phone || null, // Kullanıcı telefon numarası
+      userDisplayName: listingUser?.displayName || null, // Kullanıcı adı
+      userPhotoURL: listingUser?.photoURL || null, // Kullanıcı profil resmi
+      showPhone: listing.showPhone !== undefined ? listing.showPhone : true
+    });
+  } catch (error) {
+    console.error('Error creating listing:', error);
+    res.status(500).json({ error: error.message || 'İlan oluşturulurken hata oluştu' });
+  }
+});
+
+// İlan güncelle
+app.put('/api/listings/:id', authenticateToken, (req, res) => {
+  try {
+    const listing = dbQuery.getListingById(req.params.id);
+    
+    if (!listing) {
+      return res.status(404).json({ error: 'İlan bulunamadı' });
+    }
+    
+    // Sadece ilan sahibi veya admin güncelleyebilir
+    const user = getUserById(req.userId);
+    if (listing.userId !== req.userId && user?.role !== 'admin' && user?.role !== 'superadmin') {
+      return res.status(403).json({ error: 'Bu işlem için yetkiniz yok' });
+    }
+    
+    const updateData = req.body;
+    const updates = {};
+    
+    if (updateData.title !== undefined) updates.title = updateData.title;
+    if (updateData.description !== undefined) updates.description = updateData.description;
+    if (updateData.price !== undefined) updates.price = updateData.price;
+    if (updateData.latitude !== undefined || updateData.position) updates.latitude = updateData.latitude || updateData.position?.[0];
+    if (updateData.longitude !== undefined || updateData.position) updates.longitude = updateData.longitude || updateData.position?.[1];
+    if (updateData.address !== undefined) updates.address = updateData.address;
+    if (updateData.city !== undefined) updates.city = updateData.city;
+    if (updateData.postalCode !== undefined) updates.postalCode = updateData.postalCode;
+    if (updateData.image !== undefined) updates.image = updateData.image;
+    if (updateData.images !== undefined) updates.images = JSON.stringify(updateData.images);
+    if (updateData.videos !== undefined) updates.videos = JSON.stringify(updateData.videos);
+    if (updateData.showPhone !== undefined) updates.showPhone = updateData.showPhone;
+    if (updateData.status !== undefined) updates.status = updateData.status;
+    // Housing listing alanları
+    if (updateData.listingType !== undefined) updates.listingType = updateData.listingType;
+    if (updateData.propertyType !== undefined) updates.propertyType = updateData.propertyType;
+    if (updateData.bedrooms !== undefined) updates.bedrooms = updateData.bedrooms;
+    if (updateData.bathrooms !== undefined) updates.bathrooms = updateData.bathrooms;
+    if (updateData.sqft !== undefined) updates.sqft = updateData.sqft;
+    if (updateData.userPhone !== undefined) updates.userPhone = updateData.userPhone;
+    
+    // Fiyat değişikliği kontrolü
+    const oldPrice = listing.price;
+    const newPrice = updateData.price;
+    const priceChanged = newPrice !== undefined && oldPrice !== undefined && newPrice !== oldPrice;
+    
+    const updated = dbQuery.updateListing(req.params.id, updates);
+    
+    // Fiyat düştüyse ilanla mesajlaşan kullanıcılara bildirim gönder
+    if (priceChanged && newPrice < oldPrice) {
+      const messageUsers = dbQuery.getListingMessageUsers(req.params.id);
+      const priceDifference = oldPrice - newPrice;
+      
+      messageUsers.forEach(userId => {
+        dbQuery.createNotification({
+          userId,
+          listingId: req.params.id,
+          type: 'price_drop',
+          title: 'Fiyat Düştü!',
+          message: `"${listing.title}" ilanında fiyat ${oldPrice} TL'den ${newPrice} TL'ye düşürüldü. Bu bir fırsat! (${priceDifference} TL indirim)`,
+          listingTitle: listing.title,
+          oldPrice,
+          newPrice
+        });
+      });
+    }
+    
+    // Details varsa kaydet (false değerleri de dahil)
+    console.log('📥 İlan güncelleniyor, details:', updateData.details);
+    console.log('📥 Details keys:', updateData.details ? Object.keys(updateData.details) : 'null');
+    console.log('📥 Details değerleri:', updateData.details ? Object.entries(updateData.details) : 'null');
+    if (updateData.details && typeof updateData.details === 'object' && Object.keys(updateData.details).length > 0) {
+      console.log('💾 Details kaydediliyor (false değerleri de dahil):', updateData.details);
+      dbQuery.saveListingDetails(req.params.id, updateData.details);
+    } else {
+      console.log('⚠️ Details boş veya yok, kaydedilmiyor');
+    }
+    
+    const details = dbQuery.getListingDetails(req.params.id);
+    console.log('📖 Güncellenmiş ilan için details okundu:', details);
+    console.log('📖 Details keys:', Object.keys(details || {}));
+    
+    // Kullanıcı bilgilerini al (telefon numarası için)
+    const listingUser = dbQuery.getUserById(updated.userId);
+    
+    const responseData = {
+      ...updated,
+      position: [updated.latitude, updated.longitude],
+      details: details || {},
+      images: updated.images ? (typeof updated.images === 'string' ? JSON.parse(updated.images) : updated.images) : [updated.image].filter(Boolean),
+      videos: updated.videos ? (typeof updated.videos === 'string' ? JSON.parse(updated.videos) : updated.videos) : [],
+      userPhone: listingUser?.phone || null,
+      userDisplayName: listingUser?.displayName || null, // Kullanıcı adı
+      userPhotoURL: listingUser?.photoURL || null, // Kullanıcı profil resmi
+      showPhone: updated.showPhone !== undefined ? updated.showPhone : true
+    };
+    
+    console.log('📤 Response gönderiliyor, details:', responseData.details);
+    console.log('📤 Response details keys:', Object.keys(responseData.details || {}));
+    
+    res.json(responseData);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// İlan sil
+app.delete('/api/listings/:id', authenticateToken, (req, res) => {
+  try {
+    const listing = dbQuery.getListingById(req.params.id);
+    
+    if (!listing) {
+      return res.status(404).json({ error: 'İlan bulunamadı' });
+    }
+    
+    // Sadece ilan sahibi veya admin silebilir
+    const user = getUserById(req.userId);
+    if (listing.userId !== req.userId && user?.role !== 'admin' && user?.role !== 'superadmin') {
+      return res.status(403).json({ error: 'Bu işlem için yetkiniz yok' });
+    }
+    
+    dbQuery.deleteListing(req.params.id);
+    res.json({ success: true, message: 'İlan silindi' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== MESSAGES ROUTES ====================
+
+// Mesaj gönder
+app.post('/api/messages', authenticateToken, (req, res) => {
+  try {
+    const { listingId, receiverId, message } = req.body;
+    
+    if (!listingId || !receiverId || !message) {
+      return res.status(400).json({ error: 'listingId, receiverId ve message gerekli' });
+    }
+    
+    const newMessage = dbQuery.createMessage({
+      listingId,
+      senderId: req.userId,
+      receiverId,
+      message,
+      read: false
+    });
+    
+    res.status(201).json(newMessage);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Mesajları getir
+app.get('/api/messages', authenticateToken, (req, res) => {
+  try {
+    console.log('📥 Messages isteği alındı, userId:', req.userId);
+    const { listingId, otherUserId } = req.query;
+    console.log('📥 Query params:', { listingId, otherUserId });
+    
+    const messages = dbQuery.getMessages({
+      userId: req.userId,
+      listingId,
+      otherUserId
+    });
+    console.log('✅ Messages yüklendi, sayı:', messages?.length || 0);
+    
+    if (!Array.isArray(messages)) {
+      console.error('❌ Messages bir array değil:', typeof messages);
+      return res.status(500).json({ error: 'Mesajlar yüklenemedi' });
+    }
+    
+    // Mesajlara gönderen kullanıcı bilgilerini ekle
+    const allUsers = dbQuery.getUsers();
+    console.log('✅ Users yüklendi, sayı:', allUsers?.length || 0);
+    
+    if (!Array.isArray(allUsers)) {
+      console.error('❌ Users bir array değil:', typeof allUsers);
+      return res.status(500).json({ error: 'Kullanıcılar yüklenemedi' });
+    }
+    
+    const messagesWithSenders = messages.map(msg => {
+      try {
+        if (!msg || !msg.senderId) {
+          console.warn('⚠️ Geçersiz mesaj:', msg);
+          return {
+            ...msg,
+            senderName: 'Kullanıcı',
+            senderPhotoURL: null
+          };
+        }
+        
+        const sender = allUsers.find(u => u && u.id === msg.senderId);
+        // displayName varsa ve boş değilse kullan, yoksa email kullan
+        const senderName = sender?.displayName?.trim() 
+          ? sender.displayName.trim() 
+          : (sender?.email || 'Kullanıcı');
+        return {
+          ...msg,
+          senderName: senderName,
+          senderPhotoURL: sender?.photoURL || null
+        };
+      } catch (mapError) {
+        console.error('❌ Message map hatası:', mapError);
+        return {
+          ...msg,
+          senderName: 'Kullanıcı',
+          senderPhotoURL: null
+        };
+      }
+    });
+    
+    console.log('✅ Messages with senders hazır, sayı:', messagesWithSenders.length);
+    res.json(messagesWithSenders);
+  } catch (error) {
+    console.error('❌ Messages endpoint hatası:', error);
+    console.error('❌ Hata detayı:', error.stack);
+    res.status(500).json({ error: error.message || 'Mesajlar yüklenirken hata oluştu' });
+  }
+});
+
+// Mesaj sil (Kullanıcı - hem gönderen hem de alıcı silebilir)
+app.delete('/api/messages/:id', authenticateToken, (req, res) => {
+  try {
+    const message = dbQuery.getMessageById(req.params.id);
+    
+    if (!message) {
+      return res.status(404).json({ error: 'Mesaj bulunamadı' });
+    }
+    
+    // Hem gönderen hem de alıcı mesajı silebilir
+    if (message.senderId !== req.userId && message.receiverId !== req.userId) {
+      return res.status(403).json({ error: 'Bu mesajı silme yetkiniz yok' });
+    }
+    
+    console.log('🗑️ API: Mesaj silme isteği:', {
+      messageId: req.params.id,
+      userId: req.userId,
+      senderId: message.senderId,
+      receiverId: message.receiverId,
+      currentDeletedFor: message.deletedFor
+    });
+    
+    const deleted = dbQuery.deleteMessage(req.params.id, req.userId);
+    if (deleted) {
+      // Silme işleminden sonra mesajı tekrar kontrol et
+      const updatedMessage = dbQuery.getMessageById(req.params.id);
+      console.log('✅ API: Mesaj silme sonrası durum:', {
+        messageId: req.params.id,
+        stillExists: !!updatedMessage,
+        deletedFor: updatedMessage?.deletedFor
+      });
+      res.json({ success: true, message: 'Mesaj silindi' });
+    } else {
+      res.status(404).json({ error: 'Mesaj bulunamadı' });
+    }
+  } catch (error) {
+    console.error('❌ API: Mesaj silme hatası:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Konuşma sil (tüm mesajları sil)
+app.delete('/api/conversations', authenticateToken, (req, res) => {
+  try {
+    const { otherUserId, listingId } = req.query;
+    
+    if (!otherUserId || !listingId) {
+      return res.status(400).json({ error: 'otherUserId ve listingId gerekli' });
+    }
+    
+    const deletedCount = dbQuery.deleteConversation(req.userId, otherUserId, listingId);
+    res.json({ success: true, deletedCount });
+  } catch (error) {
+    console.error('❌ Konuşma silme hatası:', error);
+    res.status(500).json({ error: error.message || 'Konuşma silinirken hata oluştu' });
+  }
+});
+
+// Mesajı okundu olarak işaretle
+app.put('/api/messages/:id/read', authenticateToken, (req, res) => {
+  try {
+    const message = dbQuery.getMessageById(req.params.id);
+    
+    if (!message) {
+      return res.status(404).json({ error: 'Mesaj bulunamadı' });
+    }
+    
+    // Sadece mesaj alıcısı okundu olarak işaretleyebilir
+    if (message.receiverId !== req.userId) {
+      return res.status(403).json({ error: 'Bu mesajı okundu olarak işaretleme yetkiniz yok' });
+    }
+    
+    const updated = dbQuery.updateMessage(req.params.id, { read: true });
+    if (updated) {
+      res.json(updated);
+    } else {
+      res.status(404).json({ error: 'Mesaj bulunamadı' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== ADMIN MESSAGES ROUTES ====================
+
+// Tüm mesajları getir (Admin)
+app.get('/api/admin/messages', authenticateToken, (req, res) => {
+  try {
+    const user = getUserById(req.userId);
+    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
+      return res.status(403).json({ error: 'Admin yetkisi gerekli' });
+    }
+
+    const allMessages = dbQuery.getAllMessages();
+    const allUsers = dbQuery.getUsers();
+    const allListings = dbQuery.getListings();
+    
+    // Mesajlara gönderen, alıcı ve ilan bilgilerini ekle
+    const messagesWithDetails = allMessages.map(msg => {
+      const sender = allUsers.find(u => u.id === msg.senderId);
+      const receiver = allUsers.find(u => u.id === msg.receiverId);
+      const listing = allListings.find(l => l.id === msg.listingId);
+      
+      return {
+        ...msg,
+        sender: sender ? {
+          id: sender.id,
+          displayName: sender.displayName,
+          email: sender.email
+        } : null,
+        receiver: receiver ? {
+          id: receiver.id,
+          displayName: receiver.displayName,
+          email: receiver.email
+        } : null,
+        listing: listing ? {
+          id: listing.id,
+          title: listing.title,
+          category: listing.category
+        } : null
+      };
+    });
+    
+    res.json(messagesWithDetails);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Mesaj sil (Admin)
+app.delete('/api/admin/messages/:id', authenticateToken, (req, res) => {
+  try {
+    const user = getUserById(req.userId);
+    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
+      return res.status(403).json({ error: 'Admin yetkisi gerekli' });
+    }
+
+    // Admin için mesajı tamamen sil (her iki kullanıcı için de)
+    const message = dbQuery.getMessageById(req.params.id);
+    if (!message) {
+      return res.status(404).json({ error: 'Mesaj bulunamadı' });
+    }
+    
+    // Admin için mesajı tamamen sil
+    const db = loadDatabase();
+    if (!db.messages) {
+      db.messages = [];
+    }
+    const index = db.messages.findIndex(m => m.id === req.params.id);
+    if (index !== -1) {
+      db.messages.splice(index, 1);
+      saveDatabase(db);
+      res.json({ success: true, message: 'Mesaj silindi' });
+    } else {
+      res.status(404).json({ error: 'Mesaj bulunamadı' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== ADMIN USER DETAILS ROUTES ====================
+
+// Kullanıcının tüm mesajlarını getir (Admin)
+app.get('/api/admin/user/:userId/messages', authenticateToken, (req, res) => {
+  try {
+    const user = getUserById(req.userId);
+    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
+      return res.status(403).json({ error: 'Admin yetkisi gerekli' });
+    }
+
+    const { userId } = req.params;
+    const allMessages = dbQuery.getAllMessages();
+    
+    // Kullanıcının gönderdiği veya aldığı tüm mesajları filtrele
+    const userMessages = allMessages.filter(msg => 
+      msg.senderId === userId || msg.receiverId === userId
+    );
+    
+    // İlan bilgilerini de ekle
+    const messagesWithListing = userMessages.map(msg => {
+      const listing = dbQuery.getListingById(msg.listingId);
+      const sender = dbQuery.getUserById(msg.senderId);
+      const receiver = dbQuery.getUserById(msg.receiverId);
+      
+      return {
+        ...msg,
+        listing: listing ? {
+          id: listing.id,
+          title: listing.title,
+          category: listing.category
+        } : null,
+        sender: sender ? {
+          id: sender.id,
+          displayName: sender.displayName,
+          email: sender.email
+        } : null,
+        receiver: receiver ? {
+          id: receiver.id,
+          displayName: receiver.displayName,
+          email: receiver.email
+        } : null
+      };
+    });
+    
+    res.json(messagesWithListing);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Kullanıcının konuşmalarını getir
+app.get('/api/conversations', authenticateToken, (req, res) => {
+  try {
+    console.log('📥 Conversations isteği alındı, userId:', req.userId);
+    
+    const conversations = dbQuery.getConversations(req.userId);
+    console.log('✅ Conversations yüklendi, sayı:', conversations?.length || 0);
+    console.log('📋 Conversations detay:', conversations.map(c => ({
+      listingTitle: c.listingTitle,
+      listingImage: c.listingImage,
+      listingId: c.listingId
+    })));
+    
+    // İlan resim URL'lerini normalize et
+    const normalizeImageUrl = (url) => {
+      if (!url) return null;
+      
+      // Port numarasını düzelt
+      url = url.replace('localhost:3001', 'localhost:3000');
+      
+      // userId klasörünü kaldır (eski format: /uploads/listings/userId/filename)
+      // Yeni format: /uploads/listings/filename
+      if (url.includes('/uploads/listings/')) {
+        const parts = url.split('/uploads/listings/');
+        if (parts.length > 1) {
+          const pathParts = parts[1].split('/');
+          // Eğer userId klasörü varsa (UUID formatında) kaldır
+          if (pathParts.length > 1 && pathParts[0].match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+            const filename = pathParts[pathParts.length - 1];
+            url = `${req.protocol}://${req.get('host')}/uploads/listings/${filename}`;
+          } else if (!url.startsWith('http')) {
+            // Relative URL ise full URL'e çevir
+            url = `${req.protocol}://${req.get('host')}/uploads/listings/${pathParts[pathParts.length - 1]}`;
+          }
+        }
+      } else if (url.startsWith('/uploads/')) {
+        // Relative URL'leri full URL'e çevir
+        url = `${req.protocol}://${req.get('host')}${url}`;
+      }
+      
+      return url;
+    };
+    
+    // Her konuşmanın listingImage'ını normalize et
+    const normalizedConversations = conversations.map(conv => {
+      console.log('🔍 Normalize öncesi conversation:', {
+        listingTitle: conv.listingTitle,
+        listingImage: conv.listingImage,
+        listingId: conv.listingId,
+        hasListingImage: !!conv.listingImage
+      });
+      
+      const normalizedImage = conv.listingImage ? normalizeImageUrl(conv.listingImage) : null;
+      console.log('🖼️ Normalize ediliyor:', {
+        original: conv.listingImage,
+        normalized: normalizedImage,
+        listingTitle: conv.listingTitle
+      });
+      
+      const result = {
+        ...conv,
+        listingImage: normalizedImage
+      };
+      
+      console.log('✅ Normalize sonrası:', {
+        listingTitle: result.listingTitle,
+        listingImage: result.listingImage
+      });
+      
+      return result;
+    });
+    
+    const allUsers = dbQuery.getUsers();
+    console.log('✅ Users yüklendi, sayı:', allUsers?.length || 0);
+    
+    if (!Array.isArray(normalizedConversations)) {
+      console.error('❌ Conversations bir array değil:', typeof normalizedConversations);
+      return res.status(500).json({ error: 'Konuşmalar yüklenemedi' });
+    }
+    
+    if (!Array.isArray(allUsers)) {
+      console.error('❌ Users bir array değil:', typeof allUsers);
+      return res.status(500).json({ error: 'Kullanıcılar yüklenemedi' });
+    }
+    
+    // Her konuşmaya otherUserName ekle
+    const conversationsWithNames = normalizedConversations.map(conv => {
+      try {
+        if (!conv || !conv.otherUserId) {
+          console.warn('⚠️ Geçersiz conversation:', conv);
+          return {
+            ...conv,
+            otherUserName: 'Kullanıcı',
+            listingImage: conv.listingImage || null
+          };
+        }
+        
+        const otherUser = allUsers.find(u => u && u.id === conv.otherUserId);
+        const otherUserName = otherUser?.displayName?.trim() 
+          ? otherUser.displayName.trim() 
+          : (otherUser?.email || 'Kullanıcı');
+        
+        console.log('🔍 Conversation mapping:', {
+          listingTitle: conv.listingTitle,
+          listingImage: conv.listingImage,
+          listingId: conv.listingId,
+          otherUserName: otherUserName
+        });
+        
+        const result = {
+          ...conv,
+          otherUserName: otherUserName,
+          listingImage: conv.listingImage || null
+        };
+        console.log('📤 Conversation result:', {
+          listingTitle: result.listingTitle,
+          listingImage: result.listingImage,
+          listingId: result.listingId
+        });
+        return result;
+      } catch (mapError) {
+        console.error('❌ Conversation map hatası:', mapError);
+        return {
+          ...conv,
+          otherUserName: 'Kullanıcı',
+          listingImage: conv.listingImage || null
+        };
+      }
+    });
+    
+    console.log('✅ Conversations with names hazır, sayı:', conversationsWithNames.length);
+    res.json(conversationsWithNames);
+  } catch (error) {
+    console.error('❌ Conversations endpoint hatası:', error);
+    console.error('❌ Hata detayı:', error.stack);
+    res.status(500).json({ error: error.message || 'Konuşmalar yüklenirken hata oluştu' });
+  }
+});
+
+// ==================== USERS ROUTES (Admin) ====================
+
+// Kullanıcı profil bilgilerini al (herkes görebilir) - ÖNEMLİ: /api/users/:id, /api/users'den ÖNCE olmalı
+app.get('/api/users/:id', authenticateToken, (req, res) => {
+  try {
+    console.log('📥 Kullanıcı profil isteği:', req.params.id);
+    console.log('📥 İstek yapan kullanıcı:', req.userId);
+    const user = dbQuery.getUserById(req.params.id);
+    if (!user) {
+      console.log('❌ Kullanıcı bulunamadı:', req.params.id);
+      return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
+    const { password: _, ...userWithoutPassword } = user;
+    console.log('✅ Kullanıcı profili gönderiliyor:', userWithoutPassword.id, userWithoutPassword.displayName);
+    res.json(userWithoutPassword);
+  } catch (error) {
+    console.error('❌ Kullanıcı profil hatası:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Tüm kullanıcıları getir (Admin)
+app.get('/api/users', authenticateToken, (req, res) => {
+  try {
+    const user = getUserById(req.userId);
+    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
+      return res.status(403).json({ error: 'Admin yetkisi gerekli' });
+    }
+
+    const users = dbQuery.getUsers();
+    // Şifreleri response'dan çıkar
+    const usersWithoutPasswords = users.map(u => {
+      const { password: _, ...userWithoutPassword } = u;
+      return userWithoutPassword;
+    });
+    
+    res.json(usersWithoutPasswords);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Kullanıcı sil (Admin)
+app.delete('/api/users/:id', authenticateToken, (req, res) => {
+  try {
+    const user = getUserById(req.userId);
+    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
+      return res.status(403).json({ error: 'Admin yetkisi gerekli' });
+    }
+
+    if (req.params.id === req.userId) {
+      return res.status(400).json({ error: 'Kendi hesabınızı silemezsiniz' });
+    }
+
+    const deleted = dbQuery.deleteUser(req.params.id);
+    if (deleted) {
+      res.json({ success: true, message: 'Kullanıcı silindi' });
+    } else {
+      res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Kullanıcı durumunu değiştir (ban/unban)
+app.put('/api/users/:id/status', authenticateToken, (req, res) => {
+  try {
+    const user = getUserById(req.userId);
+    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
+      return res.status(403).json({ error: 'Admin yetkisi gerekli' });
+    }
+
+    const { isBanned } = req.body;
+    const updated = dbQuery.updateUser(req.params.id, { isBanned: !!isBanned });
+    
+    if (updated) {
+      const { password: _, ...userWithoutPassword } = updated;
+      res.json(userWithoutPassword);
+    } else {
+      res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Kullanıcı rolünü güncelle (Admin)
+app.put('/api/users/:id/role', authenticateToken, (req, res) => {
+  try {
+    const user = getUserById(req.userId);
+    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
+      return res.status(403).json({ error: 'Admin yetkisi gerekli' });
+    }
+
+    const { role } = req.body;
+    if (!['user', 'admin', 'superadmin'].includes(role)) {
+      return res.status(400).json({ error: 'Geçersiz rol' });
+    }
+
+    const updated = dbQuery.updateUser(req.params.id, { role });
+    
+    if (updated) {
+      const { password: _, ...userWithoutPassword } = updated;
+      res.json(userWithoutPassword);
+    } else {
+      res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Kullanıcı profil güncelleme (kendi profilini güncelleyebilir)
+// Profil resmi yükleme için multer middleware
+const uploadProfile = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const profileDir = path.join(uploadsDir, 'profiles');
+      console.log('📁 Profile directory path:', profileDir);
+      console.log('📁 Profile directory exists?', fs.existsSync(profileDir));
+      
+      if (!fs.existsSync(profileDir)) {
+        console.log('📁 Creating profile directory...');
+        fs.mkdirSync(profileDir, { recursive: true });
+        console.log('✅ Profile directory created:', profileDir);
+      }
+      
+      // Klasörün yazılabilir olduğunu kontrol et
+      try {
+        fs.accessSync(profileDir, fs.constants.W_OK);
+        console.log('✅ Profile directory is writable');
+      } catch (err) {
+        console.error('❌ Profile directory is NOT writable:', err);
+      }
+      
+      cb(null, profileDir);
+    },
+    filename: (req, file, cb) => {
+      const timestamp = Date.now();
+      const sanitizedName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const filename = `${timestamp}_${sanitizedName}`;
+      console.log('📝 Generated filename:', filename);
+      console.log('📝 Original filename:', file.originalname);
+      console.log('📝 File mimetype:', file.mimetype);
+      cb(null, filename);
+    }
+  }),
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      cb(null, true);
+    } else {
+      cb(new Error('Sadece resim dosyaları yüklenebilir!'));
+    }
+  },
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+});
+
+// Multer error handler - tek bir tanım kullanıyoruz (aşağıda 1263. satırda)
+
+// Profil güncelleme endpoint'i - Multer'ı doğrudan kullan
+app.put('/api/users/:id/profile', (req, res, next) => {
+  console.log('🚨🚨🚨 PROFİL GÜNCELLEME ENDPOINT\'İNE İSTEK GELDİ! 🚨🚨🚨');
+  console.log('🚨 Method:', req.method);
+  console.log('🚨 URL:', req.url);
+  console.log('🚨 Params:', req.params);
+  console.log('🚨 Content-Type:', req.get('Content-Type'));
+  next();
+}, authenticateToken, (req, res, next) => {
+  console.log('🔍 Middleware başladı');
+  console.log('🔍 Content-Type:', req.get('Content-Type'));
+  console.log('🔍 Is multipart?', req.is('multipart/form-data'));
+  console.log('🔍 Method:', req.method);
+  console.log('🔍 URL:', req.url);
+  next();
+}, (req, res, next) => {
+  // Multer middleware'ini manuel olarak çağır
+  console.log('🔄 Multer middleware çağrılıyor...');
+  console.log('🔄 req.body keys:', Object.keys(req.body || {}));
+  console.log('🔄 req.headers content-type:', req.get('Content-Type'));
+  
+  uploadProfile.single('photo')(req, res, (err) => {
+    if (err) {
+      console.error('❌ Multer hatası:', err);
+      console.error('❌ Multer hata detayı:', err.message);
+      console.error('❌ Multer hata stack:', err.stack);
+      return res.status(400).json({ error: err.message || 'Dosya yükleme hatası' });
+    }
+    console.log('✅ Multer middleware tamamlandı');
+    console.log('✅ req.file:', req.file ? {
+      filename: req.file.filename,
+      path: req.file.path,
+      size: req.file.size
+    } : 'YOK - req.file undefined');
+    console.log('✅ req.body after multer:', req.body);
+    next();
+  });
+}, (req, res) => {
+  try {
+    console.log('📥 Profil güncelleme isteği:', req.params.id);
+    console.log('📥 req.body:', req.body);
+    console.log('📥 req.body type:', typeof req.body);
+    console.log('📥 req.body is undefined?', req.body === undefined);
+    console.log('📥 req.body is null?', req.body === null);
+    console.log('📥 req.file:', req.file ? {
+      filename: req.file.filename,
+      path: req.file.path,
+      size: req.file.size,
+      mimetype: req.file.mimetype,
+      originalname: req.file.originalname,
+      destination: req.file.destination
+    } : 'YOK - req.file undefined');
+    console.log('📥 req.files:', req.files);
+    console.log('📥 Content-Type:', req.get('Content-Type'));
+    console.log('📥 Is multipart?', req.is('multipart/form-data'));
+    
+    // Kullanıcı sadece kendi profilini güncelleyebilir
+    if (req.userId !== req.params.id) {
+      return res.status(403).json({ error: 'Sadece kendi profilinizi güncelleyebilirsiniz' });
+    }
+
+    // req.body undefined ise boş obje kullan
+    const body = req.body || {};
+    console.log('📥 body after fallback:', body);
+    
+    // FormData'dan gelen değerler string olabilir
+    const { displayName, phone, postalCode, email, address, showPhone, showAddress } = body;
+    const updates = {};
+    
+    // Tüm alanları güncelle (undefined değilse)
+    if (displayName !== undefined) updates.displayName = displayName;
+    if (phone !== undefined) updates.phone = phone;
+    if (postalCode !== undefined) updates.postalCode = postalCode;
+    if (email !== undefined) updates.email = email;
+    if (address !== undefined) updates.address = address;
+    if (showPhone !== undefined) updates.showPhone = showPhone === 'true' || showPhone === true;
+    if (showAddress !== undefined) updates.showAddress = showAddress === 'true' || showAddress === true;
+    
+    // Profil resmi yüklendiyse ekle
+    if (req.file) {
+      const photoURL = `${req.protocol}://${req.get('host')}/uploads/profiles/${req.file.filename}`;
+      updates.photoURL = photoURL;
+      console.log('✅ Profil resmi yüklendi:', photoURL);
+      console.log('✅ Dosya bilgisi:', {
+        filename: req.file.filename,
+        path: req.file.path,
+        size: req.file.size,
+        destination: req.file.destination
+      });
+      
+      // Dosyanın gerçekten kaydedilip kaydedilmediğini kontrol et
+      const filePath = path.join(req.file.destination, req.file.filename);
+      console.log('📁 Tam dosya yolu:', filePath);
+      console.log('📁 req.file.path:', req.file.path);
+      console.log('📁 req.file.destination:', req.file.destination);
+      
+      // Önce req.file.path'i kontrol et (multer'ın kaydettiği yer)
+      if (fs.existsSync(req.file.path)) {
+        console.log('✅ Multer dosyayı kaydetti:', req.file.path);
+        const stats = fs.statSync(req.file.path);
+        console.log('📊 Dosya istatistikleri:', {
+          size: stats.size,
+          created: stats.birthtime,
+          modified: stats.mtime
+        });
+        
+        // Dosyayı hedef klasöre kopyala (eğer orada değilse veya farklıysa)
+        if (!fs.existsSync(filePath) || req.file.path !== filePath) {
+          console.log('🔄 Dosya hedef klasöre kopyalanıyor...');
+          const profileDir = path.join(uploadsDir, 'profiles');
+          if (!fs.existsSync(profileDir)) {
+            fs.mkdirSync(profileDir, { recursive: true });
+          }
+          fs.copyFileSync(req.file.path, filePath);
+          console.log('✅ Dosya hedef klasöre kopyalandı:', filePath);
+        } else {
+          console.log('✅ Dosya zaten hedef klasörde:', filePath);
+        }
+      } else {
+        console.error('❌ DOSYA HİÇBİR YERDE YOK! req.file.path:', req.file.path);
+      }
+    } else {
+      console.log('⚠️ Profil resmi yüklenmedi (req.file yok)');
+      console.log('⚠️ req.body keys:', Object.keys(req.body || {}));
+      console.log('⚠️ req.files:', req.files);
+      // Resim yoksa mevcut photoURL'i koru - updates'e ekleme
+      // Eğer FormData'da photoURL gönderilmişse ve boş/null ise, mevcut değeri koru
+      const currentUser = dbQuery.getUserById(req.params.id);
+      if (currentUser && currentUser.photoURL) {
+        console.log('💾 Mevcut photoURL korunuyor:', currentUser.photoURL);
+        // Mevcut photoURL'i korumak için updates'e eklemiyoruz
+        // Sadece yeni resim yüklendiğinde güncelliyoruz
+      }
+    }
+    
+    console.log('📝 Güncellemeler:', updates);
+    console.log('📝 updates içinde photoURL var mı?', 'photoURL' in updates);
+
+    // Mevcut kullanıcıyı al (photoURL kontrolü için)
+    const currentUser = dbQuery.getUserById(req.params.id);
+    console.log('📝 Mevcut kullanıcı photoURL:', currentUser?.photoURL);
+    
+    // Eğer resim yüklenmediyse ve mevcut photoURL varsa, koru
+    if (!req.file && currentUser && currentUser.photoURL && !('photoURL' in updates)) {
+      console.log('💾 Mevcut photoURL korunuyor (updates\'e ekleniyor):', currentUser.photoURL);
+      updates.photoURL = currentUser.photoURL;
+    }
+
+    console.log('🔄 Database güncellemesi başlatılıyor...');
+    console.log('🔄 updates tipi:', typeof updates);
+    console.log('🔄 updates null mu?', updates === null);
+    console.log('🔄 updates undefined mu?', updates === undefined);
+    console.log('🔄 updates:', updates);
+    
+    // updates'in her zaman bir obje olduğundan emin ol
+    const safeUpdates = updates && typeof updates === 'object' ? updates : {};
+    const updated = dbQuery.updateUser(req.params.id, safeUpdates);
+    if (updated) {
+      console.log('✅ Kullanıcı güncellendi:', updated.id);
+      console.log('✅ photoURL:', updated.photoURL);
+      console.log('✅ address:', updated.address);
+      
+      // Database'den tekrar oku ve kontrol et
+      const dbCheck = dbQuery.getUserById(req.params.id);
+      console.log('🔍 Database\'den tekrar okunan photoURL:', dbCheck?.photoURL);
+      
+      console.log('✅ Tüm kullanıcı bilgileri:', JSON.stringify(updated, null, 2));
+      const { password: _, ...userWithoutPassword } = updated;
+      console.log('📤 Frontend\'e gönderilecek:', JSON.stringify(userWithoutPassword, null, 2));
+      res.json(userWithoutPassword);
+    } else {
+      console.error('❌ Kullanıcı bulunamadı:', req.params.id);
+      res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+    }
+  } catch (error) {
+    console.error('❌ Profil güncelleme hatası:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin tarafından kullanıcı oluştur
+app.post('/api/users', authenticateToken, async (req, res) => {
+  try {
+    const user = getUserById(req.userId);
+    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
+      return res.status(403).json({ error: 'Admin yetkisi gerekli' });
+    }
+
+    const { email, password, displayName, role = 'user' } = req.body;
+    
+    if (!email || !password || !displayName) {
+      return res.status(400).json({ error: 'Email, şifre ve isim gerekli' });
+    }
+
+    // Email kontrolü
+    const existingUser = dbQuery.getUserByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({ error: 'Bu email zaten kullanılıyor' });
+    }
+
+    // Şifreyi hashle
+    const bcrypt = (await import('bcryptjs')).default;
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Kullanıcıyı oluştur
+    const newUser = dbQuery.createUser({
+      email,
+      password: hashedPassword,
+      displayName,
+      role,
+      photoURL: null,
+      isBanned: false
+    });
+
+    const { password: _, ...userWithoutPassword } = newUser;
+    res.status(201).json(userWithoutPassword);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== STATISTICS ROUTES (Admin) ====================
+
+// Admin istatistikleri
+app.get('/api/admin/statistics', authenticateToken, (req, res) => {
+  try {
+    const user = getUserById(req.userId);
+    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
+      return res.status(403).json({ error: 'Admin yetkisi gerekli' });
+    }
+
+    // Kullanıcı istatistikleri
+    const allUsers = dbQuery.getUsers();
+    const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'superadmin').length;
+    const regularUsers = allUsers.filter(u => u.role === 'user').length;
+
+    // İlan istatistikleri
+    const allListings = dbQuery.getListings();
+    const activeListings = allListings.filter(l => l.status === 'active').length;
+    const inactiveListings = allListings.filter(l => l.status !== 'active').length;
+
+    // Mesaj istatistikleri
+    const allMessages = dbQuery.getMessages();
+    const totalMessages = allMessages.length;
+
+    // Son 7 gün içindeki ilanlar
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const recentListings = allListings.filter(l => {
+      const createdAt = new Date(l.createdAt);
+      return createdAt >= sevenDaysAgo;
+    }).length;
+
+    // Kategori dağılımı
+    const categoryCounts = {};
+    allListings.forEach(listing => {
+      categoryCounts[listing.category] = (categoryCounts[listing.category] || 0) + 1;
+    });
+
+    res.json({
+      totalUsers: allUsers.length,
+      adminUsers,
+      regularUsers,
+      totalListings: allListings.length,
+      activeListings,
+      inactiveListings,
+      totalMessages,
+      recentListings,
+      categoryCounts
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== YENİ REKLAM SİSTEMİ (6 Slot) ====================
+
+// Aktif reklamları getir (Public - rotasyon için)
+app.get('/api/advertisements', (req, res) => {
+  try {
+    console.log('📥 GET /api/advertisements - İstek alındı');
+    let ads;
+    try {
+      ads = getActiveAds();
+      console.log('📥 GET /api/advertisements - getActiveAds sonucu:', Array.isArray(ads) ? `${ads.length} adet` : typeof ads);
+    } catch (getError) {
+      console.error('❌ getActiveAds çağrısında hata:', getError);
+      console.error('❌ getActiveAds error stack:', getError.stack);
+      return res.json([]);
+    }
+    
+    if (Array.isArray(ads)) {
+      return res.json(ads);
+    }
+    console.warn('⚠️ getActiveAds returned non-array:', ads);
+    return res.json([]);
+  } catch (error) {
+    console.error('❌ /api/advertisements error:', error);
+    console.error('❌ Error stack:', error.stack);
+    return res.json([]);
+  }
+});
+
+// Tüm reklamları getir (Admin)
+app.get('/api/admin/advertisements', authenticateToken, (req, res) => {
+  try {
+    console.log('📥 GET /api/admin/advertisements - İstek alındı');
+    const user = getUserById(req.userId);
+    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
+      return res.status(403).json({ error: 'Admin yetkisi gerekli' });
+    }
+    
+    let ads;
+    try {
+      ads = getAllAds();
+      console.log('📥 GET /api/admin/advertisements - getAllAds sonucu:', typeof ads);
+    } catch (getError) {
+      console.error('❌ getAllAds çağrısında hata:', getError);
+      console.error('❌ getAllAds error stack:', getError.stack);
+      return res.json({
+        ad1: { fileUrl: '', url: '', active: false },
+        ad2: { fileUrl: '', url: '', active: false },
+        ad3: { fileUrl: '', url: '', active: false },
+        ad4: { fileUrl: '', url: '', active: false },
+        ad5: { fileUrl: '', url: '', active: false },
+        ad6: { fileUrl: '', url: '', active: false }
+      });
+    }
+    
+    if (ads && typeof ads === 'object') {
+      return res.json(ads);
+    }
+    console.warn('⚠️ getAllAds returned invalid data:', ads);
+    return res.json({
+      ad1: { fileUrl: '', url: '', active: false },
+      ad2: { fileUrl: '', url: '', active: false },
+      ad3: { fileUrl: '', url: '', active: false },
+      ad4: { fileUrl: '', url: '', active: false },
+      ad5: { fileUrl: '', url: '', active: false },
+      ad6: { fileUrl: '', url: '', active: false }
+    });
+  } catch (error) {
+    console.error('❌ /api/admin/advertisements GET error:', error);
+    console.error('❌ Error stack:', error.stack);
+    return res.json({
+      ad1: { fileUrl: '', url: '', active: false },
+      ad2: { fileUrl: '', url: '', active: false },
+      ad3: { fileUrl: '', url: '', active: false },
+      ad4: { fileUrl: '', url: '', active: false },
+      ad5: { fileUrl: '', url: '', active: false },
+      ad6: { fileUrl: '', url: '', active: false }
+    });
+  }
+});
+
+// Reklam güncelle (Admin) - Slot bazlı
+// Özel multer middleware: folder'ı 'advertisements' olarak sabit ayarla
+const uploadAd = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const folderPath = path.join(uploadsDir, 'advertisements');
+      if (!fs.existsSync(folderPath)) {
+        fs.mkdirSync(folderPath, { recursive: true });
+      }
+      console.log(`📁 Reklam dosyası kaydediliyor: ${folderPath}`);
+      cb(null, folderPath);
+    },
+    filename: (req, file, cb) => {
+      const timestamp = Date.now();
+      const sanitizedName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const ext = path.extname(sanitizedName);
+      const name = path.basename(sanitizedName, ext);
+      const uniqueName = `${timestamp}_${name}${ext}`;
+      console.log(`📝 Reklam dosya adı: ${uniqueName}`);
+      cb(null, uniqueName);
+    }
+  }),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Sadece resim dosyaları yüklenebilir (JPEG, PNG, GIF, WEBP)'));
+    }
+  }
+});
+
+// Multer hata yakalama middleware
+const handleMulterError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    console.error('❌ Multer hatası:', err.message);
+    return res.status(400).json({ error: `Dosya yükleme hatası: ${err.message}` });
+  } else if (err) {
+    console.error('❌ Dosya yükleme hatası:', err.message);
+    return res.status(400).json({ error: err.message || 'Dosya yüklenemedi' });
+  }
+  next();
+};
+
+app.put('/api/admin/advertisements/:slot', authenticateToken, uploadAd.single('file'), handleMulterError, (req, res) => {
+  try {
+    console.log('📥 PUT /api/admin/advertisements/:slot - İstek alındı');
+    console.log('📥 req.file:', req.file ? JSON.stringify({ filename: req.file.filename, path: req.file.path, size: req.file.size }) : 'YOK');
+    console.log('📥 req.body:', JSON.stringify(req.body));
+    
+    const user = getUserById(req.userId);
+    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
+      return res.status(403).json({ error: 'Admin yetkisi gerekli' });
+    }
+
+    const { slot } = req.params;
+    if (!slot || !slot.match(/^ad[1-6]$/)) {
+      return res.status(400).json({ error: 'Geçersiz slot. ad1-ad6 arası olmalı.' });
+    }
+
+    const { url, active } = req.body;
+    
+    let fileUrl = '';
+    if (req.file) {
+      // Dosya gerçekten kaydedildi mi kontrol et
+      const filePath = req.file.path;
+      if (fs.existsSync(filePath)) {
+        const folder = 'advertisements';
+        fileUrl = `/uploads/${folder}/${req.file.filename}`;
+        fileUrl = `${req.protocol}://${req.get('host')}${fileUrl}`;
+        console.log('✅ Dosya yüklendi ve kaydedildi!');
+        console.log('   📁 Dosya yolu:', filePath);
+        console.log('   🔗 fileUrl:', fileUrl);
+      } else {
+        console.error('❌ Dosya kaydedilmedi! Yol:', filePath);
+        return res.status(500).json({ error: 'Dosya kaydedilemedi' });
+      }
+    } else if (req.body.fileUrl) {
+      fileUrl = req.body.fileUrl;
+      console.log('📎 fileUrl body\'den alındı:', fileUrl);
+    } else {
+      console.warn('⚠️ Ne dosya ne de fileUrl var! Mevcut reklamı güncellemeden devam ediliyor...');
+    }
+
+    const updateData = {
+      url: url || '',
+      active: active !== undefined ? (active === 'true' || active === true) : undefined
+    };
+    
+    // fileUrl sadece varsa ekle
+    if (fileUrl) {
+      updateData.fileUrl = fileUrl;
+    }
+    
+    console.log('📝 PUT /api/admin/advertisements/:slot - updateData:', JSON.stringify(updateData, null, 2));
+    const updated = updateAd(slot, updateData);
+
+    if (updated) {
+      console.log('✅ Reklam güncellendi:', slot);
+      return res.json(updated);
+    } else {
+      console.error('❌ Reklam güncellenemedi:', slot);
+      return res.status(500).json({ error: 'Reklam güncellenemedi' });
+    }
+  } catch (error) {
+    console.error('❌ PUT /api/admin/advertisements/:slot error:', error);
+    console.error('❌ Error stack:', error.stack);
+    return res.status(500).json({ error: error.message || 'Sunucu hatası' });
+  }
+});
+
+// Reklam sil (Admin) - Slot'u temizle
+app.delete('/api/admin/advertisements/:slot', authenticateToken, (req, res) => {
+  try {
+    const user = getUserById(req.userId);
+    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
+      return res.status(403).json({ error: 'Admin yetkisi gerekli' });
+    }
+
+    const { slot } = req.params;
+    if (!slot || !slot.match(/^ad[1-6]$/)) {
+      return res.status(400).json({ error: 'Geçersiz slot. ad1-ad6 arası olmalı.' });
+    }
+
+    const deleted = deleteAd(slot);
+    if (deleted) {
+      res.json({ message: 'Reklam silindi' });
+    } else {
+      res.status(404).json({ error: 'Reklam bulunamadı' });
+    }
+  } catch (error) {
+    console.error('❌ DELETE /api/admin/advertisements/:slot error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Tek resim yükleme
+app.post('/api/upload', upload.single('image'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Dosya yüklenmedi' });
+    }
+
+    // Folder parametresini işle (listings/userId formatını listings'e çevir)
+    let folder = req.body.folder || 'listings';
+    // Eğer listings/userId formatındaysa, sadece listings kullan
+    if (folder.includes('/')) {
+      folder = folder.split('/')[0]; // Sadece ilk kısmı al (listings)
+    }
+
+    // URL oluştur (userId klasörü olmadan)
+    const fileUrl = `/uploads/${folder}/${req.file.filename}`;
+    const fullUrl = `${req.protocol}://${req.get('host')}${fileUrl}`;
+
+    res.json({
+      success: true,
+      url: fileUrl,
+      fullUrl: fullUrl,
+      filename: req.file.filename,
+      size: req.file.size,
+      mimetype: req.file.mimetype
+    });
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({ error: error.message || 'Resim yüklenirken hata oluştu' });
+  }
+});
+
+// Çoklu resim yükleme
+app.post('/api/upload/multiple', upload.array('images', 10), (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'Dosya yüklenmedi' });
+    }
+
+    // Folder parametresini işle (listings/userId formatını listings'e çevir)
+    let folder = req.body.folder || 'listings';
+    // Eğer listings/userId formatındaysa, sadece listings kullan
+    if (folder.includes('/')) {
+      folder = folder.split('/')[0]; // Sadece ilk kısmı al (listings)
+    }
+
+    const files = req.files.map(file => {
+      const fileUrl = `/uploads/${folder}/${file.filename}`;
+      const fullUrl = `${req.protocol}://${req.get('host')}${fileUrl}`;
+      
+      return {
+        url: fileUrl,
+        fullUrl: fullUrl,
+        filename: file.filename,
+        size: file.size,
+        mimetype: file.mimetype
+      };
+    });
+
+    res.json({
+      success: true,
+      files: files,
+      count: files.length
+    });
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({ error: error.message || 'Resimler yüklenirken hata oluştu' });
+  }
+});
+
+// Resim silme
+app.delete('/api/upload/:folder/:filename', (req, res) => {
+  try {
+    const { folder, filename } = req.params;
+    const filePath = path.join(uploadsDir, folder, filename);
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      res.json({ success: true, message: 'Dosya silindi' });
+    } else {
+      res.status(404).json({ error: 'Dosya bulunamadı' });
+    }
+  } catch (error) {
+    console.error('Delete error:', error);
+    res.status(500).json({ error: error.message || 'Dosya silinirken hata oluştu' });
+  }
+});
+
+// Hata yakalama middleware
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'Dosya boyutu çok büyük. Maksimum 10MB.' });
+    }
+  }
+  res.status(500).json({ error: error.message || 'Sunucu hatası' });
+});
+
+// User Ratings & Comments Endpoints
+// Kullanıcı puanlarını getir
+app.get('/api/users/:userId/ratings', authenticateToken, (req, res) => {
+  try {
+    const { userId } = req.params;
+    const ratings = dbQuery.getUserRatings(userId);
+    res.json(ratings);
+  } catch (error) {
+    console.error('❌ Puanlar getirilemedi:', error);
+    res.status(500).json({ error: error.message || 'Puanlar getirilemedi' });
+  }
+});
+
+// Kullanıcıya puan ver
+app.post('/api/users/:userId/ratings', authenticateToken, (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { rating } = req.body;
+    
+    if (!req.userId) {
+      console.error('❌ Kullanıcı kimlik doğrulaması başarısız - req.userId yok');
+      return res.status(401).json({ error: 'Kimlik doğrulaması gerekli' });
+    }
+    
+    // Kendi kendine puan veremez
+    if (req.userId === userId) {
+      return res.status(400).json({ error: 'Kendi kendinize puan veremezsiniz' });
+    }
+    
+    const ratingData = {
+      userId: req.userId,
+      ratedUserId: userId,
+      rating: parseInt(rating)
+    };
+    const savedRating = dbQuery.createUserRating(ratingData);
+    res.json(savedRating);
+  } catch (error) {
+    console.error('❌ Puan kaydedilemedi:', error);
+    // Eğer kullanıcı zaten puan vermişse 400 döndür
+    if (error.message && error.message.includes('zaten puan verdiniz')) {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message || 'Puan kaydedilemedi' });
+  }
+});
+
+// Kullanıcı yorumlarını getir
+app.get('/api/users/:userId/comments', authenticateToken, (req, res) => {
+  try {
+    const { userId } = req.params;
+    const comments = dbQuery.getUserComments(userId);
+    // Yorumlara kullanıcı bilgilerini ekle
+    const commentsWithUsers = comments.map(comment => {
+      const user = dbQuery.getUserById(comment.userId);
+      return {
+        ...comment,
+        userName: user?.displayName || 'Kullanıcı'
+      };
+    });
+    res.json(commentsWithUsers);
+  } catch (error) {
+    console.error('❌ Yorumlar getirilemedi:', error);
+    res.status(500).json({ error: error.message || 'Yorumlar getirilemedi' });
+  }
+});
+
+// Kullanıcıya yorum yap
+app.post('/api/users/:userId/comments', authenticateToken, (req, res) => {
+  try {
+    console.log('📥 Yorum kaydetme isteği:', {
+      userId: req.params.userId,
+      body: req.body,
+      authenticatedUserId: req.userId
+    });
+    
+    const { userId } = req.params;
+    const { comment, rating } = req.body;
+    
+    if (!req.userId) {
+      console.error('❌ Kullanıcı kimlik doğrulaması başarısız - req.userId yok');
+      return res.status(401).json({ error: 'Kimlik doğrulaması gerekli' });
+    }
+    
+    // Kendi kendine yorum yapamaz
+    if (req.userId === userId) {
+      return res.status(400).json({ error: 'Kendi kendinize yorum yapamazsınız' });
+    }
+    
+    const commentData = {
+      userId: req.userId,
+      ratedUserId: userId,
+      comment: comment || '',
+      rating: rating ? parseInt(rating) : 0
+    };
+    
+    console.log('💾 Yorum verisi:', commentData);
+    
+    const savedComment = dbQuery.createUserComment(commentData);
+    console.log('✅ Yorum kaydedildi:', savedComment);
+    
+    const user = dbQuery.getUserById(req.userId);
+    const response = {
+      ...savedComment,
+      userName: user?.displayName || 'Kullanıcı'
+    };
+    
+    console.log('📤 Yorum yanıtı:', response);
+    res.json(response);
+  } catch (error) {
+    console.error('❌ Yorum kaydedilemedi:', error);
+    console.error('❌ Hata stack:', error.stack);
+    // Eğer kullanıcı zaten yorum yapmışsa 400 döndür
+    if (error.message && error.message.includes('zaten yorum yaptınız')) {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message || 'Yorum kaydedilemedi' });
+  }
+});
+
+// İlanı rezerve et
+app.post('/api/listings/:listingId/reserve', jsonMiddleware, authenticateToken, async (req, res) => {
+  try {
+    console.log('📥 Rezervasyon isteği:', {
+      listingId: req.params.listingId,
+      body: req.body,
+      userId: req.userId
+    });
+    
+    const { listingId } = req.params;
+    const { hours, sellerId } = req.body || {};
+    
+    if (!req.userId) {
+      console.error('❌ Kimlik doğrulaması başarısız');
+      return res.status(401).json({ error: 'Kimlik doğrulaması gerekli' });
+    }
+    
+    if (!hours || hours < 1 || hours > 168) {
+      console.error('❌ Geçersiz saat:', hours);
+      return res.status(400).json({ error: 'Rezervasyon süresi 1-168 saat arasında olmalıdır' });
+    }
+    
+    const listing = dbQuery.getListingById(listingId);
+    if (!listing) {
+      console.error('❌ İlan bulunamadı:', listingId);
+      return res.status(404).json({ error: 'İlan bulunamadı' });
+    }
+    
+    // Rezervasyon süresini hesapla
+    const endTime = new Date();
+    endTime.setHours(endTime.getHours() + parseInt(hours));
+    
+    const reservationData = {
+      listingId,
+      reservedByUserId: req.userId,
+      sellerId: sellerId || listing.userId,
+      hours: parseInt(hours),
+      endTime: endTime.toISOString()
+    };
+    
+    console.log('💾 Rezervasyon verisi:', reservationData);
+    
+    const reservation = dbQuery.createReservation(reservationData);
+    console.log('✅ Rezervasyon oluşturuldu:', reservation);
+    
+    // Rezerve eden kullanıcının adını al
+    const reservedByUser = dbQuery.getUserById(req.userId);
+    
+    // İlanla mesajlaşan tüm kullanıcılara bildirim gönder (rezerve eden hariç)
+    const messageUsers = dbQuery.getListingMessageUsers(listingId);
+    const reservedByUserName = reservedByUser?.displayName || 'Kullanıcı';
+    const reservationEndTime = new Date(reservation.endTime);
+    const endTimeStr = reservationEndTime.toLocaleString('tr-TR', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric',
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+    
+    messageUsers.forEach(userId => {
+      // Rezerve eden kullanıcıya bildirim gönderme
+      if (userId !== req.userId) {
+        dbQuery.createNotification({
+          userId,
+          listingId,
+          type: 'reservation',
+          title: 'İlan Rezerve Edildi',
+          message: `"${listing.title}" ilanı ${reservedByUserName} tarafından ${endTimeStr} tarihine kadar rezerve edildi.`,
+          listingTitle: listing.title,
+          reservedByUserId: req.userId,
+          reservedByName: reservedByUserName,
+          endTime: reservation.endTime
+        });
+      }
+    });
+    
+    const response = {
+      ...reservation,
+      reservedByName: reservedByUserName
+    };
+    
+    console.log('📤 Rezervasyon yanıtı:', response);
+    res.json(response);
+  } catch (error) {
+    console.error('❌ Rezervasyon oluşturulamadı:', error);
+    console.error('❌ Hata stack:', error.stack);
+    if (error.message && error.message.includes('zaten rezerve edilmiş')) {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: error.message || 'Rezervasyon oluşturulamadı' });
+  }
+});
+
+// İlan rezervasyon bilgisini getir
+app.get('/api/listings/:listingId/reservation', (req, res) => {
+  try {
+    const { listingId } = req.params;
+    console.log('📥 Rezervasyon bilgisi isteği:', listingId);
+    
+    const reservation = dbQuery.getReservation(listingId);
+    console.log('🔍 Bulunan rezervasyon:', reservation ? {
+      id: reservation.id,
+      listingId: reservation.listingId,
+      endTime: reservation.endTime,
+      cancelled: reservation.cancelled,
+      isExpired: reservation.endTime ? new Date(reservation.endTime) <= new Date() : false
+    } : 'Bulunamadı');
+    
+    if (!reservation) {
+      console.log('✅ Rezervasyon yok, isReserved: false döndürülüyor');
+      return res.json({ isReserved: false });
+    }
+    
+    // End time kontrolü - eğer geçmişteyse rezervasyon geçersiz
+    const endTime = new Date(reservation.endTime);
+    const now = new Date();
+    
+    if (endTime <= now) {
+      console.log('⚠️ Rezervasyon süresi dolmuş:', { endTime, now });
+      return res.json({ isReserved: false });
+    }
+    
+    // Rezerve eden kullanıcının adını al
+    const reservedByUser = dbQuery.getUserById(reservation.reservedByUserId);
+    
+    const response = {
+      isReserved: true,
+      ...reservation,
+      reservedByName: reservedByUser?.displayName || 'Kullanıcı'
+    };
+    
+    console.log('✅ Aktif rezervasyon döndürülüyor:', response);
+    res.json(response);
+  } catch (error) {
+    console.error('❌ Rezervasyon bilgisi getirilemedi:', error);
+    console.error('❌ Hata stack:', error.stack);
+    res.status(500).json({ error: error.message || 'Rezervasyon bilgisi getirilemedi' });
+  }
+});
+
+// Rezervasyonu iptal et
+app.post('/api/listings/:listingId/reservation/cancel', authenticateToken, async (req, res) => {
+  try {
+    console.log('📥 Rezervasyon iptal isteği başladı:', {
+      listingId: req.params.listingId,
+      userId: req.userId,
+      method: req.method,
+      url: req.url
+    });
+    
+    const { listingId } = req.params;
+    
+    if (!req.userId) {
+      console.error('❌ Kimlik doğrulaması başarısız - req.userId yok');
+      return res.status(401).json({ error: 'Kimlik doğrulaması gerekli' });
+    }
+    
+    if (!listingId) {
+      console.error('❌ listingId eksik');
+      return res.status(400).json({ error: 'İlan ID gerekli' });
+    }
+    
+    console.log('🔄 cancelReservation çağrılıyor...');
+    const cancelled = dbQuery.cancelReservation(listingId, req.userId);
+    
+    if (!cancelled) {
+      console.error('❌ Rezervasyon bulunamadı veya iptal edilemez:', { 
+        listingId, 
+        userId: req.userId,
+        totalReservations: dbQuery.getReservation ? 'N/A' : 'N/A'
+      });
+      return res.status(404).json({ error: 'Rezervasyon bulunamadı veya iptal edilemez' });
+    }
+    
+    console.log('✅ Rezervasyon iptal edildi:', cancelled);
+    res.json({ success: true, message: 'Rezervasyon iptal edildi' });
+  } catch (error) {
+    console.error('❌ Rezervasyon iptal edilemedi:', error);
+    console.error('❌ Hata mesajı:', error.message);
+    console.error('❌ Hata stack:', error.stack);
+    console.error('❌ Hata detayları:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({ 
+      error: error.message || 'Rezervasyon iptal edilemedi',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// İlan satış bilgisini getir
+app.get('/api/listings/:listingId/sale', (req, res) => {
+  try {
+    const { listingId } = req.params;
+    console.log('🔍 Satış bilgisi isteniyor, listingId:', listingId);
+    const sale = dbQuery.getListingSale(listingId);
+    console.log('🔍 Satış bilgisi:', sale ? 'VAR' : 'YOK');
+    if (sale) {
+      res.json(sale);
+    } else {
+      // Satış yoksa 200 ile null döndür (frontend'de hata olarak algılanmasın)
+      res.status(200).json(null);
+    }
+  } catch (error) {
+    console.error('❌ Satış bilgisi alınamadı:', error);
+    res.status(500).json({ error: error.message || 'Satış bilgisi alınamadı' });
+  }
+});
+
+// İlanı satıldı olarak işaretle
+app.post('/api/listings/:listingId/sold', authenticateToken, (req, res) => {
+  try {
+    const { listingId } = req.params;
+    const { buyerId } = req.body;
+    
+    if (!req.userId) {
+      return res.status(401).json({ error: 'Kimlik doğrulaması gerekli' });
+    }
+    
+    const listing = dbQuery.getListingById(listingId);
+    if (!listing) {
+      return res.status(404).json({ error: 'İlan bulunamadı' });
+    }
+    
+    // Sadece ilan sahibi satıldı olarak işaretleyebilir
+    if (listing.userId !== req.userId) {
+      return res.status(403).json({ error: 'Bu işlem için yetkiniz yok' });
+    }
+    
+    const saleData = {
+      listingId,
+      sellerId: req.userId,
+      buyerId: buyerId || null,
+      soldAt: new Date().toISOString()
+    };
+    
+    const sale = dbQuery.markListingAsSold(saleData);
+    
+    // İlanla mesajlaşan tüm kullanıcılara bildirim gönder
+    const messageUsers = dbQuery.getListingMessageUsers(listingId);
+    
+    messageUsers.forEach(userId => {
+      // Alıcıya ve diğer ilgilenen kullanıcılara bildirim gönder
+      dbQuery.createNotification({
+        userId,
+        listingId,
+        type: 'sold',
+        title: 'İlan Satıldı',
+        message: `"${listing.title}" ilanı satıldı ve listeden kaldırıldı.`,
+        listingTitle: listing.title
+      });
+    });
+    
+    // Satıcı ve alıcıya bildirim gönder (mesaj olarak)
+    if (buyerId) {
+      const buyer = dbQuery.getUserById(buyerId);
+      const seller = dbQuery.getUserById(req.userId);
+      
+      // Sadece alıcıya bildirim mesajı gönder
+      const buyerMessage = {
+        id: uuidv4(),
+        conversationId: `${buyerId}_${req.userId}_${listingId}`,
+        senderId: req.userId,
+        receiverId: buyerId,
+        listingId,
+        message: `${seller?.displayName || 'Kullanıcı'} Bu Ilanı Size Sattı. Karşılıklı Puan Vermeniz Önerilir.`,
+        timestamp: new Date().toISOString(),
+        read: false
+      };
+      dbQuery.createMessage(buyerMessage);
+    }
+    
+    res.json(sale);
+  } catch (error) {
+    console.error('❌ İlan satıldı olarak işaretlenemedi:', error);
+    res.status(500).json({ error: error.message || 'İlan satıldı olarak işaretlenemedi' });
+  }
+});
+
+// ==================== NOTIFICATIONS ====================
+
+// Kullanıcının bildirimlerini getir
+app.get('/api/notifications', authenticateToken, (req, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ error: 'Kimlik doğrulaması gerekli' });
+    }
+    
+    const notifications = dbQuery.getUserNotifications(req.userId);
+    res.json(notifications);
+  } catch (error) {
+    console.error('❌ Bildirimler alınamadı:', error);
+    res.status(500).json({ error: error.message || 'Bildirimler alınamadı' });
+  }
+});
+
+// Bildirimi okundu olarak işaretle
+app.put('/api/notifications/:id/read', authenticateToken, (req, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ error: 'Kimlik doğrulaması gerekli' });
+    }
+    
+    const notification = dbQuery.markNotificationAsRead(req.params.id);
+    if (!notification) {
+      return res.status(404).json({ error: 'Bildirim bulunamadı' });
+    }
+    
+    // Bildirim kullanıcıya ait mi kontrol et
+    if (notification.userId !== req.userId) {
+      return res.status(403).json({ error: 'Bu işlem için yetkiniz yok' });
+    }
+    
+    res.json(notification);
+  } catch (error) {
+    console.error('❌ Bildirim okundu olarak işaretlenemedi:', error);
+    res.status(500).json({ error: error.message || 'Bildirim okundu olarak işaretlenemedi' });
+  }
+});
+
+// Server başlat
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server çalışıyor: http://localhost:${PORT}`);
+  console.log(`📁 Uploads directory: ${uploadsDir}`);
+  console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
+  console.log(`✅ Backend hazır ve istekleri bekliyor!`);
+  console.log(`🔍 Profil güncelleme endpoint: PUT /api/users/:id/profile`);
+  console.log(`🔍 Kullanıcı profil endpoint: GET /api/users/:id`);
+  console.log(`🔍 Tüm istekler loglanacak!`);
+});
+
